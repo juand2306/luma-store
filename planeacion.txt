@@ -1,0 +1,509 @@
+LUMA STORE SYSTEM
+Sistema de Gestión Integral para Tiendas de Ropa y Accesorios
+ DOCUMENTO DE PLANEACIÓN DEL SISTEMA 
+Versión 1.0  —  2025
+Confidencial — Solo para uso interno del equipo de desarrollo
+Tabla de Contenido
+1. Visión General del Sistema
+LUMA STORE SYSTEM es una aplicación web de gestión integral diseñada exclusivamente para tiendas de ropa, bolsos y accesorios. El sistema opera en dos grandes frentes que trabajan de forma sincronizada: un Panel de Administración interno al que accede el equipo de la tienda, y un Portal de Clientes público donde los compradores pueden explorar el catálogo y realizar pedidos.
+El sistema está concebido como un producto de licencia única: cada tienda que lo adquiera recibe su propia instancia independiente, con su marca, colores, dominio y base de datos propios. Esto garantiza privacidad total de datos, personalización de interfaz por cliente, y un producto que el dueño siente genuinamente suyo.
+Filosofía de diseño
+Cero dependencias de pago: todas las funcionalidades del sistema operan sin costos de terceros ni APIs de pago. La comunicación con clientes se gestiona vía WhatsApp de forma gratuita.
+Auto-administrable: el dueño de la tienda puede gestionar absolutamente todo desde el panel sin necesidad de asistencia técnica.
+Preparado para crecer: la estructura del sistema deja los cimientos listos para funciones futuras como pasarela de pagos, sin necesidad de rediseñar el sistema.
+Mobile-first para clientes: el portal de clientes está diseñado primero para móvil, dado que la mayoría de compradores acceden desde celular.
+Stack Tecnológico
+Backend
+Django 5 + Django REST Framework (DRF)
+Frontend
+React 18 + Vite + Tailwind CSS
+Base de datos
+PostgreSQL
+Autenticación
+JWT (JSON Web Tokens)
+Despliegue
+Un solo servidor — Django sirve la app React compilada como archivos estáticos
+Configuración
+Variables de entorno (.env) por instancia — una instancia por tienda cliente
+2. Estructura General del Sistema
+El sistema está dividido en dos grandes aplicaciones que comparten el mismo backend pero tienen interfaces completamente separadas:
+Aplicación
+Acceso
+Usuarios
+Descripción
+Panel de Administración
+/admin
+Dueño, Administrador, Vendedor, Visor
+Gestión interna completa de la tienda
+Portal de Clientes
+/tienda
+Público (sin login requerido)
+Catálogo y carrito de compras
+Módulos del Sistema
+#
+Módulo
+Descripción corta
+1
+Autenticación y Usuarios
+Login, roles y permisos del equipo de la tienda
+2
+Inventario
+Productos, variantes, stock, categorías, movimientos
+3
+Caja
+Apertura/cierre diario, registro de ingresos y egresos
+4
+Ventas
+Registro de ventas, devoluciones y cambios
+5
+Pedidos
+Gestión de pedidos provenientes del portal de clientes
+6
+Clientes
+Base de datos CRM básico y fidelización opcional
+7
+Portal de Clientes
+Catálogo público, carrito y pedido por WhatsApp
+8
+Dashboard y Métricas
+Indicadores clave, alertas y reportes
+9
+Configuración
+Personalización de la tienda, usuarios, preferencias
+3. Módulo de Autenticación y Usuarios
+3.1 Pantalla de Login
+La pantalla de login es la puerta de entrada al Panel de Administración. Es una vista limpia y centrada en pantalla que muestra el logo de la tienda (configurado en las variables de entorno), un campo de usuario, un campo de contraseña, y un botón de ingreso. No existe opción de registro público; las cuentas del equipo son creadas exclusivamente por el administrador o dueño desde el panel interno.
+Si las credenciales son incorrectas, se muestra un mensaje de error inline bajo el formulario sin recargar la página. Si el login es exitoso, el sistema redirige automáticamente al dashboard principal.
+3.2 Roles del Sistema
+El sistema maneja cuatro roles con permisos diferenciados. Cada usuario del equipo de la tienda tiene asignado exactamente un rol.
+Rol
+Descripción
+Accesos permitidos
+Dueño (owner)
+Propietario del negocio. Acceso total e irrestricto.
+Todo el sistema sin excepción
+Administrador
+Encargado de confianza. Puede gestionar todo excepto configuración sensible.
+Inventario, ventas, caja, pedidos, clientes, métricas
+Vendedor
+Personal de ventas. Accede solo a la vista de Venta Rápida.
+Vista de Venta Rápida, consulta de catálogo y stock
+Visor
+Solo lectura. Puede ver reportes y métricas sin modificar nada.
+Dashboard y reportes en modo lectura
+3.3 Gestión de Usuarios
+Desde la sección de Configuración > Usuarios, el Dueño y el Administrador pueden crear nuevas cuentas ingresando nombre completo, correo electrónicousuario, contraseña temporal y rol asignado. También pueden editar datos de usuarios existentes, cambiar roles, activar o desactivar cuentas (sin eliminarlas, para conservar el historial de movimientos asociado a ese usuario), y restablecer contraseñas.
+Cada acción realizada en el sistema queda registrada con el usuario que la ejecutó (auditoría interna), visible en los historiales de movimiento de inventario y caja.
+4. Panel de Administración — Layout General
+El Panel de Administración es la interfaz principal del equipo de la tienda. Tiene un diseño de aplicación web moderna con las siguientes zonas fijas:
+Barra lateral (Sidebar) — izquierda
+Menú de navegación vertical que permanece visible en todo momento. Contiene el logo de la tienda en la parte superior, y debajo los ítems de navegación principales. En dispositivos móviles el sidebar se colapsa y se accede mediante un botón de menú hamburguesa en la barra superior. Los ítems del sidebar varían según el rol del usuario logueado: un vendedor solo ve "Venta Rápida", mientras que el dueño ve todos los módulos.
+Barra superior (Topbar) — arriba
+Barra fija en la parte superior que muestra el nombre del módulo activo (por ejemplo: "Inventario"), una campana de notificaciones con badge numérico para alertas de stock bajo o pedidos nuevos, el nombre del usuario logueado y su rol, y un menú desplegable con opciones de "Mi perfil" y "Cerrar sesión".
+Área de contenido — centro-derecha
+Zona principal donde se renderiza el contenido de cada módulo. Tiene scroll independiente respecto al sidebar y la topbar, garantizando que la navegación siempre sea visible sin importar qué tan largo sea el contenido de la página activa.
+5. Dashboard Principal
+El dashboard es la primera pantalla que ve el usuario al hacer login. Su objetivo es dar un resumen ejecutivo del estado del negocio en un vistazo rápido. Está compuesto por tarjetas de métricas, gráficas de tendencia y alertas activas.
+5.1 Tarjetas de Resumen (KPIs)
+En la parte superior del dashboard se muestran cuatro tarjetas grandes con los indicadores más importantes del día:
+Ventas del día: monto total vendido en el día en curso, con comparativo respecto al día anterior (flecha verde si subió, roja si bajó).
+Pedidos nuevos: cantidad de pedidos del portal de clientes que aún no han sido atendidos.
+Productos con stock bajo: número de productos que están por debajo del umbral de alerta configurado.
+Caja actual: monto disponible en caja en este momento (diferencia entre apertura, ingresos y egresos del día).
+5.2 Gráfica de Ventas
+Debajo de las tarjetas se muestra una gráfica de línea o barras con las ventas de los últimos 30 días. El usuario puede cambiar el rango a "últimos 7 días" o "últimos 90 días" con botones de filtro rápido. Al pasar el cursor sobre un punto de la gráfica se muestra el detalle del monto de ese día.
+5.3 Productos Más Vendidos
+Listado de los 5 productos más vendidos en el período seleccionado, mostrando nombre del producto, categoría, unidades vendidas y monto total generado. Tiene un botón "Ver reporte completo" que lleva al módulo de Reportes con ese filtro aplicado.
+5.4 Alertas de Stock
+Panel de alertas activas que lista todos los productos cuyo stock actual está por debajo del umbral de alerta definido en cada producto. Cada alerta muestra: nombre del producto, variante (talla/color), stock actual, stock mínimo configurado, y un indicador visual de urgencia (rojo: agotado, naranja: crítico, amarillo: bajo). Al hacer clic en cualquier alerta se navega directamente al producto en el módulo de Inventario.
+5.5 Predicción de Reabastecimiento
+Sección que muestra productos con estimado de días restantes según el ritmo de ventas de los últimos 30 días. El cálculo es: stock actual dividido entre el promedio de unidades vendidas por día en el último mes. Si el resultado es menor a 10 días, aparece en esta sección con el texto: "Se estima agotamiento en X días". Cada ítem tiene un botón "Crear orden de compra" que abre el formulario de orden de compra prellenado con ese producto.
+6. Módulo de Inventario
+El módulo de inventario es el núcleo operativo del sistema. Aquí se gestiona todo el catálogo de productos de la tienda, incluyendo variantes por talla y color, precios, costos, stock y movimientos.
+6.1 Lista de Productos
+Vista principal del módulo de inventario. Muestra una tabla paginada con todos los productos de la tienda. Cada fila de la tabla contiene: imagen principal del producto (miniatura), nombre del producto, categoría, número de variantes activas, stock total consolidado (suma de todas las variantes), precio de venta base, estado (Activo / Inactivo / Agotado), y si está visible en el portal de clientes.
+En la parte superior de la tabla hay controles de búsqueda (por nombre o referencia), filtros (por categoría, estado, visibilidad en catálogo, stock bajo), y los botones de acción principales: "Nuevo Producto" y "Importar desde CSV".
+Cada fila tiene un menú de acciones rápidas con tres opciones: Ver/Editar, Duplicar producto, y Desactivar/Activar. Al hacer clic en el nombre del producto se abre la vista de detalle del producto.
+6.2 Formulario de Producto — Crear y Editar
+El formulario de creación/edición de producto se divide en secciones bien diferenciadas:
+Sección: Información General
+Nombre del producto: campo de texto obligatorio.
+Referencia / SKU base: campo de texto. Si se deja vacío, el sistema genera uno automáticamente.
+Descripción: campo de texto largo para descripción del producto. Se muestra en el portal de clientes.
+Categoría: selector desplegable de las categorías creadas por el dueño. Permite seleccionar una categoría principal.
+Subcategoría: selector opcional que aparece solo si la categoría seleccionada tiene subcategorías.
+Visible en catálogo: toggle ON/OFF que controla si este producto es visible en el portal de clientes.
+Estado: selector con opciones Activo, Inactivo. El estado "Agotado" lo asigna el sistema automáticamente cuando todas las variantes llegan a stock 0.
+Sección: Precios y Costos
+Esta sección contiene tres campos numéricos que funcionan de forma interdependiente en tiempo real. El usuario puede llenar cualquiera de los dos campos modificables y el tercero se calcula automáticamente al instante sin necesidad de confirmar o guardar:
+Costo: cuánto le costó al dueño adquirir el producto. Campo editable.
+Margen de ganancia (%): porcentaje de ganancia sobre el precio de venta. Campo editable. Fórmula: ((Precio de Venta - Costo) / Precio de Venta) x 100.
+Precio de venta: precio al que se vende al cliente final. Campo editable. Fórmula: Costo / (1 - Margen / 100).
+Si el usuario edita el Costo y el Margen, se recalcula el Precio de Venta. Si edita el Costo y el Precio de Venta, se recalcula el Margen. Esto permite flexibilidad total en cómo el dueño piensa sus precios.
+Nota: el costo es un dato interno y nunca es visible en el portal de clientes ni en ninguna pantalla de acceso público.
+Sección: Imágenes
+El producto puede tener hasta 8 imágenes. Se puede subir desde el dispositivo o tomar foto con la cámara en móvil. La primera imagen es la imagen principal que aparece en listados y catálogo. Las imágenes se pueden reordenar arrastrando y soltando. Formatos aceptados: JPG, PNG, WEBP. Tamaño máximo por imagen: 5 MB. Se Utilizara Claudinary para alojar y cargar las Imágenes.  
+Sección: Variantes
+Las variantes son las combinaciones específicas de talla y color de un producto. Cada variante tiene su propio stock, precio (opcional, puede sobreescribir el precio base) y código de barras.
+La interfaz de variantes funciona así: el usuario define primero los atributos disponibles del producto (por ejemplo: Tallas: XS, S, M, L, XL — Colores: Negro, Blanco, Rojo). El sistema genera automáticamente la matriz de combinaciones (XS-Negro, XS-Blanco, XS-Rojo, S-Negro...). El usuario puede entonces: eliminar combinaciones que no existen, ajustar el precio individual por variante (si difiere del precio base), ingresar el stock inicial de cada variante, y ver el código de barras/QR generado automáticamente para cada variante.
+Si el producto no maneja tallas ni colores (por ejemplo, una cartera de talla única y color único), se puede saltar la sección de variantes y el sistema crea una variante única por defecto.
+Sección: Configuración de Alertas
+Stock mínimo: número a partir del cual se dispara la alerta en el dashboard y notificaciones. Por defecto es 3 unidades, pero es configurable por producto.
+6.3 Vista de Detalle del Producto
+Al hacer clic en un producto desde la lista, se abre la vista de detalle. Muestra toda la información del producto en modo lectura, con un botón "Editar" para pasar al formulario de edición. Incluye: galería de imágenes navegable, tabla de variantes con stock en tiempo real por variante, historial de movimientos de inventario de este producto (entradas, salidas, ajustes, devoluciones, cambios), y gráfica de ventas del producto en los últimos 30 días.
+6.4 Categorías
+Vista dedicada a la gestión de categorías y subcategorías. Muestra un árbol de categorías en el lado izquierdo y el formulario de creación/edición en el derecho. Se puede crear categoría principal o subcategoría (seleccionando la categoría padre). Cada categoría tiene: nombre, descripción opcional, y orden de aparición en el catálogo. Las categorías pueden ser desactivadas (no se muestran en el catálogo ni en filtros) sin ser eliminadas. No se puede eliminar una categoría que tenga productos activos asignados.
+6.5 Movimientos de Inventario
+Vista de registro y consulta de todos los movimientos de inventario de la tienda. Los movimientos son los eventos que modifican el stock. Los tipos de movimiento son:
+Tipo
+Efecto en stock
+Descripción
+Entrada
+Suma (+)
+Ingreso de mercancía nueva a la tienda (compra de inventario)
+Salida (venta)
+Resta (-)
+Venta registrada en el sistema. Se genera automáticamente al confirmar una venta
+Cambio — entrada
+Suma (+)
+Prenda que regresa al stock por un cambio. Se registra qué prenda entró
+Cambio — salida
+Resta (-)
+Prenda que sale del stock por un cambio. Se registra qué prenda salió
+Devolución
+Suma (+)
+Prenda devuelta por el cliente. El stock sube y la caja se ajusta si aplica
+Ajuste manual
+Suma o Resta
+Corrección del stock por conteo físico, error administrativo o pérdida
+En la vista de movimientos se puede filtrar por tipo, por fecha, por producto y por usuario. Cada movimiento registra: fecha y hora, tipo, producto y variante afectada, cantidad, usuario que realizó el movimiento, y una nota opcional.
+6.6 Importación Masiva de Productos
+Función para cargar múltiples productos de una vez mediante un archivo CSV. El sistema provee una plantilla CSV descargable con el formato correcto. Al subir el archivo, el sistema valida los datos fila por fila antes de importar y muestra un resumen con los errores encontrados (fila X: le falta el precio, fila Y: la categoría no existe, etc.). El usuario puede corregir y volver a subir. Los productos importados quedan en estado Inactivo y sin visibilidad en catálogo por defecto, para que el dueño los revise antes de publicar.
+7. Módulo de Caja
+El módulo de caja controla el flujo de dinero en efectivo de la tienda, funcionando como una caja registradora digital. Cada día tiene un ciclo: apertura de caja al inicio del día y cierre de caja al final.
+7.1 Estado de la Caja
+Pantalla principal del módulo. Muestra el estado actual de la caja del día en curso. Si la caja del día no ha sido abierta todavía, muestra únicamente un botón grande "Abrir Caja" con el campo para ingresar el monto inicial. Si la caja ya está abierta, muestra el resumen completo del día.
+7.2 Apertura de Caja
+Al abrir la caja, el usuario ingresa el monto en efectivo con el que se inicia el día (el "efectivo de cambio" o "base"). Se registra la hora de apertura y el usuario que realizó la apertura. A partir de este momento, todas las ventas en efectivo y transferencias, devoluciones y movimientos de caja del día se suman o restan de este monto base.
+7.3 Panel de Caja Abierta
+Con la caja abierta, la pantalla muestra en tiempo real:
+Monto inicial: efectivo con el que se abrió la caja.
+Total ingresos del día: suma de todas las ventas registradas.
+Total egresos del día: suma de todas las salidas de dinero registradas.
+Total devoluciones del día: dinero devuelto a clientes.
+Efectivo actual en caja: monto inicial + ingresos - egresos - devoluciones.
+Listado de movimientos de caja del día: tabla cronológica con todos los movimientos, tipo, monto, método de pago (Nequi, Daviplata, etc.)  y descripción.
+Desde esta pantalla también se pueden registrar movimientos manuales de caja (egresos como gastos del local, compras menores, servicios, etc.) con una descripción y monto.
+7.4 Cierre de Caja
+Al finalizar el día, el usuario realiza el cierre de caja. El sistema muestra el resumen completo del día y solicita que el usuario ingrese el monto físico contado en caja. El sistema calcula automáticamente la diferencia entre lo que debería haber, desglosado por cada método de pago. (según los registros) y lo que hay físicamente. Si hay diferencia, se registra como sobrante o faltante con la opción de agregar una nota explicativa. El cierre queda registrado con fecha, hora, usuario, montos y diferencia. Una vez cerrada la caja, los movimientos del día ya no son editables.
+7.5 Historial de Cierres
+Vista que lista todos los cierres de caja históricos. Se puede ver el detalle de cualquier día pasado: apertura, todos los movimientos, cierre, diferencia registrada. Útil para revisión contable y seguimiento.
+8. Módulo de Ventas
+El módulo de ventas gestiona las transacciones que ocurren directamente en el local físico (ventas presenciales), así como las devoluciones y cambios.
+8.1 Registrar Venta
+Pantalla para registrar una venta presencial. Funciona como una interfaz de punto de venta simplificada. El proceso de registro de una venta es:
+El vendedor busca el producto por nombre, referencia o código de barras en el campo de búsqueda.
+Al seleccionar el producto, aparece un selector de variante (talla + color) con el stock disponible visible para cada combinación.
+Se agrega la cantidad al carrito de venta. El sistema muestra el subtotal automáticamente.
+Se pueden agregar múltiples productos al mismo carrito de venta.
+El vendedor selecciona el método de pago: Efectivo, Transferencia, Tarjeta Débito, Tarjeta Crédito, Nequi, Daviplata u Otro.
+Si el pago es en efectivo, aparece un campo "Recibido" donde se ingresa el billete dado por el cliente y el sistema calcula automáticamente el cambio a devolver.
+Al confirmar la venta: el stock de cada variante vendida se descuenta automáticamente, se genera un registro de venta, se registra el ingreso en caja, y opcionalmente se puede registrar el cliente asociado a esa venta.
+8.2 Vista de Venta Rápida (Rol Vendedor)
+Esta es la pantalla exclusiva para el rol "Vendedor". Es una versión simplificada y optimizada para uso en móvil o tablet. Tiene un diseño con botones grandes y navegación táctil. La pantalla muestra el catálogo de productos en cuadrícula con foto, nombre, talla/color y precio. El vendedor puede buscar, seleccionar productos, armar el carrito y registrar la venta. No tiene acceso a costos, métricas, configuración ni historial de caja. El objetivo es que un vendedor pueda tomar un pedido y cerrarlo en menos de 60 segundos.
+8.3 Devoluciones
+Para registrar una devolución, el usuario va a Ventas > Devoluciones > Nueva Devolución. El proceso es:
+Se busca la venta original por número de venta, nombre del cliente, o fecha. También se puede hacer la devolución sin venta de referencia.
+Se selecciona el producto y variante a devolver y la cantidad.
+Se selecciona el motivo de la devolución: prenda dañada (costura, cierre, etc.), talla incorrecta, encargo no aceptado, otro.
+Se ingresa una nota opcional describiendo el estado de la prenda devuelta.
+El sistema muestra el monto que corresponde devolver al cliente según el precio de venta original.
+El usuario confirma el monto a devolver (puede ser menor si la tienda aplica descuento por uso, por política interna).
+Al confirmar: el stock de esa variante sube en la cantidad devuelta, se registra un movimiento de tipo "Devolución" en inventario, y se registra el egreso correspondiente en caja.
+8.4 Cambios
+Un cambio es cuando el cliente devuelve una prenda y lleva otra en reemplazo. Se registra desde Ventas > Devoluciones > Nuevo Cambio. El proceso es:
+Se selecciona la prenda que el cliente devuelve: producto, variante (talla/color) y cantidad. El stock de esa variante sube.
+Se selecciona la prenda que el cliente se lleva: producto, variante y cantidad. El stock de esa variante baja.
+El sistema calcula automáticamente la diferencia de precio entre las dos prendas:
+Si la prenda nueva vale más: el cliente debe pagar la diferencia. El sistema muestra el monto a cobrar y lo registra como ingreso en caja.
+Si la prenda nueva vale menos: la tienda devuelve la diferencia (según política). El sistema muestra el monto a devolver y lo registra como egreso en caja.
+Si valen igual: no hay movimiento de caja.
+Se registra el motivo del cambio y una nota opcional.
+Al confirmar, se generan dos movimientos de inventario (Cambio-Entrada y Cambio-Salida) y el ajuste de caja correspondiente.
+8.5 Historial de Ventas
+Tabla con todas las ventas registradas en el sistema, filtrables por fecha, vendedor, método de pago y monto. Cada registro muestra: número de venta, fecha y hora, productos vendidos (resumen), total, método de pago, cliente asociado (si se registró), vendedor que la procesó, y si tuvo devolución o cambio posterior. Al hacer clic en una venta se ve el detalle completo.
+9. Módulo de Pedidos
+Los pedidos son las solicitudes de compra que llegan a través del portal de clientes. Como el proceso de pago se gestiona por WhatsApp, los pedidos llegan al sistema en estado "Nuevo" y el equipo de la tienda los atiende manualmente.
+9.1 Lista de Pedidos
+Vista principal del módulo. Tabla con todos los pedidos recibidos. Cada fila muestra: número de pedido, fecha y hora en que se realizó, nombre del cliente (si lo ingresó) o "Cliente Anónimo", productos solicitados (resumen: cantidad de ítems), total estimado del pedido, y estado actual. La tabla se puede filtrar por estado y por rango de fechas. Los pedidos en estado "Nuevo" tienen un resaltado visual para que se noten inmediatamente.
+9.2 Estados de un Pedido
+Estado
+Significado
+¿Quién lo asigna?
+Nuevo
+Pedido recién llegado del portal, sin atender
+Sistema automático
+En gestión
+El equipo ya lo vio y está coordinando con el cliente por WhatsApp
+El usuario del panel
+Confirmado
+El cliente confirmó el pedido y acordó el pago
+El usuario del panel
+En preparación
+La prenda está siendo alistada para entrega o envío
+El usuario del panel
+Enviado
+El pedido fue despachado (si aplica envío a domicilio)
+El usuario del panel
+Entregado
+El cliente recibió su pedido y la venta se completó
+El usuario del panel
+Cancelado
+El pedido fue cancelado por el cliente o por la tienda
+El usuario del panel
+9.3 Detalle de Pedido
+Al abrir un pedido se muestra su información completa: número de pedido, fecha y hora, datos del cliente (nombre y número de WhatsApp, son obligatorios), lista detallada de productos solicitados (nombre, talla, color, cantidad, precio unitario, subtotal), total del pedido, y el historial de cambios de estado con fecha, hora y usuario que realizó cada cambio.
+Desde esta vista se puede cambiar el estado del pedido usando el selector de estados. Al cambiar el estado, aparece un botón "Notificar por WhatsApp" que abre WhatsApp con un mensaje prellenado, listo para enviar al cliente con un solo clic. El mensaje incluye el número de pedido, los productos, el nuevo estado y el total.
+Cuando el pedido llega a estado "Confirmado" y posteriormente a "Entregado", el sistema sugiere crear una venta formal en el módulo de ventas para que el ingreso quede registrado en caja e inventario.
+9.4 Plantillas de Mensajes WhatsApp
+Desde Configuración > Mensajes, el dueño puede editar las plantillas de los mensajes que se precargan en WhatsApp para cada cambio de estado. Las plantillas usan variables como {nombre_cliente}, {numero_pedido}, {productos}, {total}, {estado} que el sistema reemplaza automáticamente con los datos reales del pedido.
+10. Módulo de Clientes
+Módulo de CRM (Customer Relationship Management) básico para gestionar la base de datos de clientes de la tienda.
+10.1 Lista de Clientes
+Tabla con todos los clientes registrados en el sistema. Un cliente se registra cuando: el vendedor lo asocia a una venta presencial, o el cliente ingresa sus datos al realizar un pedido desde el portal. La tabla muestra: nombre, número de WhatsApp/teléfono, email (opcional), fecha de primer registro, número de compras realizadas, total acumulado en compras, fecha de última compra, y segmentación automática.
+10.2 Segmentación Automática
+El sistema clasifica automáticamente a cada cliente en una de estas categorías según su comportamiento de compra:
+Cliente Frecuente: más de 3 compras en los últimos 60 días.
+Cliente Regular: entre 1 y 3 compras en los últimos 60 días.
+Cliente Nuevo: primera compra hace menos de 15 días.
+Cliente Inactivo: sin compras en los últimos 90 días.
+Esta segmentación es visible en la lista de clientes y permite filtrar para tomar acciones como enviar mensajes de recuperación por WhatsApp a los clientes inactivos.
+10.3 Perfil de Cliente
+Al abrir un cliente, se muestra su ficha completa: datos de contacto, segmentación actual, historial completo de compras (cada venta o pedido asociado a ese cliente), y si el sistema de puntos está activo, el saldo de puntos acumulados.
+10.4 Sistema de Fidelización por Puntos (Opcional)
+El sistema de puntos es un módulo opcional que el dueño puede activar o desactivar desde Configuración > Fidelización. Cuando está desactivado, la sección de puntos no aparece en ninguna parte del sistema ni del portal de clientes.
+Cuando está activado, el dueño configura:
+Equivalencia: cuántos pesos equivalen a 1 punto (por ejemplo: cada $1.000 pesos = 1 punto).
+Valor de canje: cuántos pesos vale cada punto al canjearse (por ejemplo: 1 punto = $50 pesos de descuento).
+Puntos mínimos para canjear: cantidad mínima de puntos para poder usar un descuento.
+Los puntos se acumulan automáticamente al registrar ventas asociadas a clientes. Al registrar una venta, el vendedor puede aplicar un canje de puntos si el cliente desea usarlos, y el sistema descuenta el equivalente del total y ajusta el saldo de puntos del cliente.
+11. Portal de Clientes — Tienda Virtual
+El portal de clientes es la cara pública del sistema. Es una tienda virtual a la que cualquier persona puede acceder desde su navegador sin necesidad de crear una cuenta ni hacer login. El objetivo del portal es presentar el catálogo de la tienda de forma atractiva y permitir al cliente armar su pedido y enviarlo por WhatsApp.
+El portal tiene su propia URL que el dueño comparte en Instagram, redes sociales y WhatsApp. Ejemplo: tienda.milocal.com o milocal.com/tienda.
+11.1 Pantalla Principal del Portal
+La página de inicio del portal muestra:
+Encabezado con el logo de la tienda, nombre de la tienda y un icono de carrito con el contador de ítems actual.
+Banner principal: imagen o texto de bienvenida configurable por el dueño desde el panel.
+Sección de categorías: accesos directos a las principales categorías en forma de cuadrícula con imagen representativa. Solo se muestran las categorías que tienen al menos un producto visible.
+Sección de productos destacados: cuadrícula de productos marcados como "destacados" por el dueño, mostrando imagen, nombre, talla/color disponibles y precio.
+Footer con el nombre de la tienda, información de contacto (WhatsApp), y política de envíos/devoluciones (configurable).
+11.2 Catálogo / Página de Productos
+Vista completa del catálogo con todos los productos visibles de la tienda. El layout es una cuadrícula adaptable: 2 columnas en móvil, 3 en tablet, 4 en escritorio. Cada tarjeta de producto muestra: imagen principal, nombre, precio, y badge de "Agotado" si no tiene stock disponible.
+En la parte izquierda (o en un panel deslizable en móvil) se encuentran los filtros:
+Categoría: selector múltiple de categorías.
+Talla: selector múltiple de tallas disponibles.
+Color: selector visual de colores (puntos de color).
+Precio: control deslizante de rango de precio mínimo y máximo.
+Disponibilidad: checkbox "Solo mostrar disponibles".
+En la parte superior hay una barra de búsqueda por nombre de producto. Los filtros y la búsqueda se aplican en tiempo real sin recargar la página.
+11.3 Página de Detalle del Producto
+Al hacer clic en un producto, se abre la página de detalle con:
+Galería de imágenes: imagen principal grande con thumbnails navegables abajo.
+Nombre del producto y descripción completa.
+Precio de venta destacado.
+Selector de talla: botones con las tallas disponibles. Las tallas sin stock se muestran tachadas o en gris y no son seleccionables.
+Selector de color: puntos de color clicables. Al seleccionar una combinación talla+color, se actualiza el stock disponible mostrado.
+Indicador de disponibilidad: texto dinámico que muestra si hay stock disponible para la combinación seleccionada.
+Selector de cantidad: campo numérico con botones más/menos. Limitado al stock disponible.
+Botón "Agregar al carrito": agrega el producto con la variante y cantidad seleccionadas. Si no se ha seleccionado talla o color (en productos que los requieren), el botón muestra un mensaje de validación.
+Botón "Compartir": genera un enlace directo a este producto y abre el selector nativo de compartir del dispositivo.
+11.4 Carrito de Compras
+El carrito es accesible desde el ícono en el encabezado del portal. Es un panel lateral deslizable (no una página aparte) que muestra los ítems agregados sin abandonar la página actual. El carrito muestra:
+Lista de productos: imagen miniatura, nombre, variante seleccionada (talla + color), precio unitario, selector de cantidad editable, subtotal por ítem, y botón de eliminar ítem.
+Resumen de totales: subtotal, y total final.
+Botón "Vaciar carrito": elimina todos los ítems.
+Botón "Finalizar pedido por WhatsApp": botón principal de acción, destacado visualmente.
+11.5 Flujo de Finalizar Pedido por WhatsApp
+Al presionar "Finalizar pedido por WhatsApp", se muestra un formulario breve:
+Nombre: campo de texto.
+Número de WhatsApp: campo numérico.
+Nota del pedido: campo de texto libre (opcional, por ejemplo: "Por favor enviar a domicilio" o "Tengo alguna duda sobre la talla").
+Al confirmar, el sistema abre WhatsApp automáticamente (sea en la app o en WhatsApp Web, según el dispositivo) con el número de la tienda precargado, y el siguiente mensaje listo para enviar:
+📦 Nuevo pedido desde el catálogo online
+Nombre: [nombre ingresado o "No especificado"]
+Productos solicitados:
+  - Blusa talla M color Negro x1 — $45.000
+  - Bolso Mediano color Camel x2 — $130.000
+Total estimado: $175.000
+Nota: Me gustaría recibirlo a domicilio.
+Al mismo tiempo, el pedido se registra automáticamente en el panel de administración en estado "Nuevo", para que el equipo de la tienda lo vea y lo gestione.
+Una vez que el cliente envía el mensaje de WhatsApp, el carrito se vacía automáticamente y el portal muestra una pantalla de confirmación con el mensaje: "¡Tu pedido fue enviado! El equipo de [nombre de la tienda] te atenderá en breve por WhatsApp."
+11.6 Diseño y Personalización del Portal
+El portal hereda automáticamente la configuración de marca de la tienda definida en el panel de administración: logo, nombre, color principal (que se aplica en botones, encabezado y acentos), imagen de banner, y datos de contacto. El portal no tiene ningún elemento que identifique al sistema detrás (sin "Powered by" ni marcas del sistema), para que el cliente sienta que está en la tienda directamente.
+12. Módulo de Métricas y Reportes
+El módulo de métricas va más allá del dashboard y permite al dueño analizar el negocio en profundidad con datos históricos, comparativos y exportables.
+12.1 Reporte de Ventas
+Permite ver las ventas con filtros personalizables: rango de fechas, método de pago, vendedor, categoría de producto. Muestra tabla detallada de ventas, totales por período y gráfica de evolución. Se puede exportar a PDF o Excel con un clic.
+12.2 Reporte de Inventario
+Vista del estado actual del inventario con filtros por categoría, estado y nivel de stock. Muestra valor total del inventario (suma de costos de todos los productos en stock), valor potencial de ventas (suma de precios de venta del stock), y margen potencial. Exportable a PDF y Excel.
+12.3 Reporte de Productos
+Análisis de rendimiento por producto: ranking de los más y menos vendidos, rotación de inventario por producto (cuánto tiempo en promedio tarda en venderse), y margen de ganancia real por producto comparado con el margen teórico.
+12.4 Reporte de Clientes
+Análisis de la base de clientes: distribución por segmento, clientes con más compras, ticket promedio por cliente, y clientes inactivos con fecha de último contacto.
+12.5 Reporte de Caja
+Histórico de aperturas y cierres de caja, con ingresos, egresos, diferencias registradas y totales por período. Útil para el contador.
+12.6 Exportación
+Todos los reportes se pueden exportar a PDF (formato listo para imprimir o compartir) o a Excel (para análisis externo o contabilidad). La exportación incluye el logo y nombre de la tienda en el encabezado del documento.
+13. Módulo de Configuración
+El módulo de configuración es el panel de control general del sistema. Solo accessible para los roles Dueño y Administrador.
+13.1 Información de la Tienda
+Nombre de la tienda.
+Logo: carga de imagen (JPG, PNG). Se muestra en el panel y en el portal de clientes.
+Color principal: selector de color que define el color de marca aplicado en el portal de clientes (botones, encabezados, acentos).
+Número de WhatsApp de atención: número al que se redirigen los pedidos del portal.
+Dirección física (opcional).
+Horario de atención (opcional, se muestra en el footer del portal).
+Política de envíos y devoluciones: campo de texto editable que aparece en el footer del portal.
+Banner principal del portal: imagen o texto promocional que aparece en la página de inicio del catálogo.
+13.2 Usuarios del Equipo
+Gestión completa de los usuarios del panel de administración. Crear nuevo usuario, editar datos, cambiar rol, activar/desactivar cuenta.
+13.3 Fidelización y Puntos
+Toggle de activación del sistema de puntos. Si está activo, muestra los controles de configuración: equivalencia de compra a puntos, valor de canje de puntos, y mínimo de puntos para canjear.
+13.4 Mensajes de WhatsApp
+Editor de plantillas de mensajes para las notificaciones manuales de estados de pedido. Una plantilla por cada estado de pedido. El dueño puede personalizar el texto y las variables disponibles están documentadas en pantalla.
+13.5 Pasarela de Pagos (Desactivada — Preparada)
+Sección visible pero desactivada por defecto. Muestra un aviso: "Esta función está disponible como módulo adicional. Contacte al proveedor del sistema para activarla." Internamente, la arquitectura del sistema ya tiene los hooks y la estructura de datos preparados para integrar una pasarela (Wompi, PayU, Stripe) sin necesidad de rediseñar el sistema. Cuando el cliente desee activarla, solo se requiere configurar las credenciales de la pasarela y activar el toggle, y el botón del carrito cambiará de WhatsApp a pago en línea.
+14. Flujos Completos del Sistema
+14.1 Flujo: Cliente realiza un pedido por el portal
+El cliente accede al portal de clientes desde el enlace compartido por la tienda.
+Navega por el catálogo, aplica filtros si desea, y hace clic en un producto.
+Selecciona talla y color en la página de detalle del producto.
+Hace clic en "Agregar al carrito". El carrito lateral se abre mostrando el ítem.
+El cliente puede seguir comprando o ir al carrito para revisar.
+En el carrito, el cliente hace clic en "Finalizar pedido por WhatsApp".
+Ingresa su nombre y número y confirma.
+WhatsApp se abre con el mensaje prellenado listo para enviar al número de la tienda.
+El cliente envía el mensaje. El pedido queda registrado en el panel en estado "Nuevo".
+El equipo de la tienda ve el pedido en el panel, hace clic en "Notificar por WhatsApp" para responderle al cliente y coordinar el pago.
+A medida que el pedido avanza, el equipo cambia el estado y notifica al cliente con un clic por WhatsApp.
+Cuando el pedido se entrega, el equipo lo marca como "Entregado" y registra la venta en el módulo de ventas para actualizar inventario y caja.
+14.2 Flujo: Venta presencial directa en el local
+El vendedor accede al panel de administración (o a la vista de Venta Rápida si es rol Vendedor).
+Busca el producto por nombre o código de barras.
+Selecciona variante y cantidad.
+Agrega al carrito de venta. Puede agregar múltiples productos.
+Selecciona método de pago. Si es efectivo, ingresa el monto recibido y el sistema calcula el cambio.
+Confirma la venta. El sistema descuenta el stock, registra la venta y el ingreso en caja.
+Opcionalmente, asocia la venta a un cliente de la base de datos o crea un cliente nuevo.
+14.3 Flujo: Cambio de prenda dañada
+El cliente llega a la tienda con la prenda dañada.
+El vendedor va a Ventas > Devoluciones > Nuevo Cambio.
+Selecciona la prenda devuelta (la dañada): producto, talla, color. El stock sube.
+Selecciona la prenda que el cliente lleva: producto, talla, color. El stock baja.
+El sistema calcula la diferencia de precios. En este caso, si es un cambio por daño, la tienda generalmente ofrece la misma prenda o una de igual valor sin cobro adicional.
+Se ingresa el motivo: "Prenda dañada — costura" y una nota descriptiva.
+Se confirma el cambio. Quedan registrados dos movimientos de inventario y el ajuste de caja (si aplica).
+14.4 Flujo: Alerta de stock bajo y reabastecimiento
+El sistema detecta que el stock de una variante cayó por debajo del umbral configurado.
+En el dashboard aparece la alerta con el nombre del producto, variante y stock actual.
+En la sección de predicción, aparece el estimado de días restantes.
+El dueño hace clic en "Crear orden de compra" desde la alerta.
+Se abre el formulario de orden de compra con el producto prellenado. El dueño ajusta la cantidad y confirma.
+La orden de compra queda registrada en el sistema como pendiente.
+Cuando la mercancía llega, el dueño va a Inventario > Movimientos > Nueva Entrada, asocia la entrada a la orden de compra, y el stock se actualiza.
+15. Resumen de Accesos por Rol
+Función
+Dueño
+Administrador
+Vendedor
+Visor
+Dashboard completo
+Sí
+Sí
+No
+Sí (solo lectura)
+Inventario — ver
+Sí
+Sí
+Solo catálogo
+Sí
+Inventario — crear/editar
+Sí
+Sí
+No
+No
+Inventario — movimientos manuales
+Sí
+Sí
+No
+No
+Ventas — registrar
+Sí
+Sí
+Sí (Venta Rápida)
+No
+Ventas — devoluciones y cambios
+Sí
+Sí
+No
+No
+Pedidos del portal
+Sí
+Sí
+No
+Solo lectura
+Caja — apertura/cierre
+Sí
+Sí
+No
+No
+Clientes — ver y editar
+Sí
+Sí
+No
+Solo lectura
+Métricas y reportes
+Sí
+Sí
+No
+Sí
+Exportar reportes
+Sí
+Sí
+No
+Sí
+Configuración de tienda
+Sí
+No
+No
+No
+Gestión de usuarios
+Sí
+No
+No
+No
+Configuración de fidelización
+Sí
+No
+No
+No
+16. Consideraciones Técnicas para el Desarrollo
+16.1 Modelo de Despliegue
+Cada cliente que adquiera el sistema recibe una instancia propia con su propio repositorio (fork o copia del repositorio base), su propia base de datos PostgreSQL, y su propio servidor o hosting. La configuración específica de cada tienda (nombre, logo, WhatsApp, colores, credenciales de base de datos) se gestiona exclusivamente a través de variables de entorno (.env), sin modificar el código fuente. Esto permite actualizar el sistema base y aplicar las actualizaciones a los clientes de forma limpia.
+16.2 Estructura de Archivos del Proyecto
+/backend
+Proyecto Django con DRF. Apps separadas por módulo: inventory, sales, orders, customers, cash, reports, config.
+/frontend/admin
+App React para el Panel de Administración.
+/frontend/store
+App React para el Portal de Clientes.
+/frontend/dist
+Build compilado de ambas apps React. Django lo sirve como estático en producción.
+.env
+Variables de entorno de la instancia (no se incluye en el repositorio).
+env.example
+Plantilla documentada de las variables de entorno necesarias.
+16.3 Pasarela de Pagos — Estructura Preparada
+Aunque la pasarela de pagos no se implementa en esta fase, el sistema se construye dejando los siguientes elementos listos: modelo Order con campo payment_status y payment_method, endpoint POST /api/orders/{id}/pay/ disponible pero desactivado, y en el frontend un componente <PaymentGateway /> que existe pero solo se renderiza si la variable de entorno PAYMENT_ENABLED=true. Activar la pasarela en el futuro solo requiere configurar las credenciales, activar la variable de entorno, y conectar el proveedor de pagos al endpoint existente.
+ FIN DEL DOCUMENTO DE PLANEACIÓN 
+LUMA STORE SYSTEM — Versión 1.0 — 2025

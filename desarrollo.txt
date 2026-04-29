@@ -1,0 +1,1687 @@
+LUMA STORE SYSTEM
+Guía de Desarrollo por Fases
+ MANUAL TÉCNICO PARA CONSTRUCCIÓN DEL SISTEMA COMPLETO 
+Versión 1.0  —  2025
+Este documento debe leerse junto al Documento de Planeación del Sistema
+Tabla de Contenido
+Tabla de Contenido2
+Cómo usar este documento4
+Reglas fundamentales antes de empezar4
+1.1 Estructura de carpetas del repositorio6
+1.2 Configuración del backend — Django6
+Instalación de dependencias6
+Archivo .env.example7
+settings.py — Configuración esencial7
+1.3 Configuración del frontend — React9
+1.4 Base de datos en desarrollo — SQLite9
+2.1 App: users — Usuarios y Roles11
+2.2 App: inventory — Inventario12
+2.3 App: cash — Caja14
+2.4 App: sales — Ventas15
+2.5 App: orders — Pedidos del Portal16
+2.6 App: customers — Clientes17
+2.7 Aplicar todas las migraciones18
+3.1 Estructura de cada app en el backend20
+3.2 URLs principales — config/urls.py20
+3.3 Sistema de Permisos por Rol21
+3.4 Tabla de endpoints de la API21
+3.5 Patrón de construcción de cada endpoint23
+3.6 Endpoint especial — Crear Pedido desde el Portal (Público)24
+4.1 Estructura de carpetas del frontend Admin26
+4.2 Cliente API — api/client.js27
+4.3 Sistema de rutas con protección por rol — AppRouter.jsx28
+4.4 Sidebar — navegación por rol28
+5.1 Pantalla: Lista de Productos30
+5.2 Formulario de Producto — Lógica del triángulo financiero30
+5.3 Formulario de Producto — Gestión de variantes31
+5.4 Pantalla: Movimientos de Inventario31
+6.1 Pantalla de Caja33
+6.2 Pantalla de Registro de Venta33
+6.3 Vista de Venta Rápida (rol Vendedor)33
+6.4 Pantalla de Devoluciones y Cambios34
+7.1 Pantalla de Lista de Pedidos35
+7.2 Pantalla de Detalle de Pedido35
+7.3 Construcción del mensaje de WhatsApp35
+7.4 Pantalla de Clientes36
+8.1 Estructura del Portal de Clientes37
+8.2 Estado del Carrito — CartContext.jsx37
+8.3 Flujo de finalización del pedido38
+8.4 Diseño del portal — Mobile First38
+9.1 Endpoint del Dashboard40
+9.2 Cálculo de Predicción de Reabastecimiento41
+9.3 Exportación de Reportes42
+10.1 Modelo de Configuración de la Tienda43
+10.2 Pantalla de Configuración en el Admin43
+10.3 Aplicar color de marca en el Portal de Clientes44
+11.1 Pruebas de integración end-to-end46
+Flujo 1 — Ciclo de vida completo de un pedido del portal46
+Flujo 2 — Venta presencial con cambio posterior46
+Flujo 3 — Ciclo de inventario completo46
+11.2 Checklist de UX y pulido visual47
+12.1 Build de producción del frontend49
+12.2 Configuración de producción en settings.py49
+12.3 Checklist de entrega al cliente50
+12.4 Proceso de instalación para un cliente nuevo51
+Resumen de Fases y Dependencias52
+Cómo usar este documento
+Este documento es la guía maestra de construcción del sistema LUMA STORE SYSTEM. Está diseñado para que cualquier desarrollador, sea humano o IA, pueda seguirlo de principio a fin y construir el sistema completo sin ambigüedades.
+Reglas fundamentales antes de empezar
+Leer primero el Documento de Planeación del Sistema completo antes de escribir una sola línea de código. Ese documento describe QUÉ se construye. Este documento describe CÓMO y EN QUÉ ORDEN construirlo.
+Las fases son secuenciales. No se debe avanzar a la siguiente fase sin haber completado y validado la anterior. Cada fase construye sobre la anterior.
+Al finalizar cada fase existe una Lista de Validaciones. Se deben cumplir TODAS las validaciones antes de pasar a la siguiente fase. No hay excepciones.
+Nunca eliminar ni refactorizar código de una fase anterior sin entender completamente cómo ese código es usado por las fases siguientes.
+Cada módulo del backend (Django) se construye completo (modelos, serializers, vistas, URLs) antes de conectarlo al frontend (React).
+El frontend nunca debe contener lógica de negocio. Toda la lógica vive en el backend. El frontend solo muestra datos y envía peticiones.
+Fase
+Nombre
+Entregable principal
+1
+Configuración del proyecto
+Repositorio funcional con entornos listos
+2
+Modelos de base de datos
+Todas las tablas creadas y migradas
+3
+Backend — API base
+API REST completa y documentada
+4
+Autenticación y usuarios
+Login, JWT, roles y permisos funcionando
+5
+Módulo de Inventario
+CRUD de productos, variantes, categorías y movimientos
+6
+Módulo de Caja
+Apertura, cierre y movimientos de caja
+7
+Módulo de Ventas
+Registro de ventas, devoluciones y cambios
+8
+Módulo de Pedidos
+Gestión de pedidos del portal de clientes
+9
+Módulo de Clientes
+CRM básico y sistema de puntos
+10
+Panel de Administración — UI
+Frontend completo del panel admin
+11
+Portal de Clientes — UI
+Frontend completo del portal público
+12
+Dashboard y Métricas
+Dashboard con KPIs, gráficas y reportes
+13
+Integración y pruebas
+Sistema completo probado end-to-end
+14
+Preparación y despliegue
+Sistema listo para entregar al cliente
+FASE 1  Configuración del Proyecto
+Crear la estructura base del repositorio, instalar dependencias y configurar los entornos de desarrollo.
+1.1 Estructura de carpetas del repositorio
+Crear la siguiente estructura de carpetas en la raíz del proyecto. Esta estructura debe existir desde el inicio y nunca cambiarse porque las fases siguientes dependen de estas rutas.
+luma-store/
+├── backend/
+│   ├── config/              ← Configuración principal de Django (settings, urls, wsgi)
+│   ├── apps/
+│   │   ├── users/           ← Autenticación y usuarios
+│   │   ├── inventory/       ← Inventario, productos, variantes, categorías
+│   │   ├── sales/           ← Ventas, devoluciones, cambios
+│   │   ├── orders/          ← Pedidos del portal de clientes
+│   │   ├── customers/       ← Clientes y fidelización
+│   │   ├── cash/            ← Módulo de caja
+│   │   └── reports/         ← Métricas, dashboard y exportaciones
+│   ├── manage.py
+│   ├── requirements.txt
+│   └── .env.example
+├── frontend/
+│   ├── admin/               ← App React del Panel de Administración
+│   │   ├── src/
+│   │   ├── public/
+│   │   └── package.json
+│   └── store/               ← App React del Portal de Clientes
+│       ├── src/
+│       ├── public/
+│       └── package.json
+├── .gitignore
+└── README.md
+1.2 Configuración del backend — Django
+Instalación de dependencias
+Crear el archivo requirements.txt en /backend/ con exactamente estos paquetes:
+django>=5.0
+djangorestframework>=3.15
+djangorestframework-simplejwt>=5.3
+django-cors-headers>=4.3
+psycopg2-binary>=2.9  # Solo instalar en producción (para PostgreSQL)
+python-dotenv>=1.0
+pillow>=10.0
+django-filter>=23.0
+reportlab>=4.0
+openpyxl>=3.1
+django-storages>=1.14
+Instalar con: pip install -r requirements.txt
+Archivo .env.example
+Crear este archivo en /backend/. Cada instancia del sistema para un cliente nuevo usará su propio .env con estos valores configurados. NUNCA subir el .env real al repositorio.
+# ─── BASE ───────────────────────────────────────────────
+SECRET_KEY=django-insecure-cambia-esto-en-produccion
+DEBUG=True
+ALLOWED_HOSTS=localhost,127.0.0.1
+# ─── BASE DE DATOS ──────────────────────────────────────
+# DESARROLLO: Django usa SQLite por defecto. No se necesita configurar nada aqui.
+# PRODUCCION: Descomentar y completar estas variables para PostgreSQL:
+# DB_NAME=lumastore_db
+# DB_USER=postgres
+# DB_PASSWORD=tu_password
+# DB_HOST=localhost
+# DB_PORT=5432
+# ─── TIENDA ─────────────────────────────────────────────
+STORE_NAME=Mi Tienda
+STORE_WHATSAPP=573001234567
+STORE_PRIMARY_COLOR=#2E86C1
+# ─── PAGOS (desactivado por defecto) ────────────────────
+PAYMENT_ENABLED=False
+PAYMENT_PROVIDER=
+PAYMENT_PUBLIC_KEY=
+PAYMENT_PRIVATE_KEY=
+settings.py — Configuración esencial
+El archivo config/settings.py debe incluir estas configuraciones obligatorias. Sin ellas el sistema no funcionará correctamente:
+# Leer variables del .env
+from dotenv import load_dotenv
+import os
+load_dotenv()
+INSTALLED_APPS = [
+    # ... apps de Django ...
+    "rest_framework",
+    "rest_framework_simplejwt",
+    "corsheaders",
+    "django_filters",
+    "apps.users",
+    "apps.inventory",
+    "apps.sales",
+    "apps.orders",
+    "apps.customers",
+    "apps.cash",
+    "apps.reports",
+]
+MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",  # DEBE ser el primero
+    # ... resto de middleware ...
+]
+# Permitir peticiones del frontend React en desarrollo
+CORS_ALLOWED_ORIGINS = ["http://localhost:5173", "http://localhost:5174"]
+# Configuración JWT
+from datetime import timedelta
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(hours=8),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+}
+# DRF — Autenticación por defecto con JWT
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ],
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticated",
+    ],
+    "DEFAULT_FILTER_BACKENDS": [
+        "django_filters.rest_framework.DjangoFilterBackend",
+    ],
+}
+# Archivos multimedia (imágenes de productos)
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
+# Leer configuración de tienda desde .env
+STORE_NAME = os.getenv("STORE_NAME", "Mi Tienda")
+STORE_WHATSAPP = os.getenv("STORE_WHATSAPP", "")
+STORE_PRIMARY_COLOR = os.getenv("STORE_PRIMARY_COLOR", "#2E86C1")
+PAYMENT_ENABLED = os.getenv("PAYMENT_ENABLED", "False") == "True"
+1.3 Configuración del frontend — React
+Se crean DOS aplicaciones React separadas. Una para el Panel de Administración y otra para el Portal de Clientes. Cada una tiene su propio package.json y se sirven en puertos distintos durante el desarrollo.
+# Crear las dos apps con Vite
+cd frontend/admin && npm create vite@latest . -- --template react
+cd frontend/store && npm create vite@latest . -- --template react
+# Instalar dependencias en cada una
+# En admin:
+npm install axios react-router-dom @tanstack/react-query
+npm install recharts react-hot-toast lucide-react
+npm install -D tailwindcss postcss autoprefixer
+npx tailwindcss init -p
+# En store (portal de clientes — más ligero):
+npm install axios react-router-dom
+npm install -D tailwindcss postcss autoprefixer
+npx tailwindcss init -p
+💡  El Panel Admin corre en el puerto 5173. El Portal de Clientes corre en el puerto 5174. El Backend Django corre en el puerto 8000. Estos puertos son fijos para todo el desarrollo.
+1.4 Base de datos en desarrollo — SQLite
+En desarrollo se usa SQLite, que viene incluido con Python y Django. No requiere instalar nada ni crear una base de datos manualmente. Django crea el archivo db.sqlite3 en la raiz del proyecto automaticamente al correr las migraciones. La configuracion en settings.py ya lo maneja por defecto:
+# settings.py — configuracion de base de datos para desarrollo (SQLite)
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": BASE_DIR / "db.sqlite3",
+    }
+}  # Esta es la config por defecto de Django. No hay que instalar nada extra.
+El archivo db.sqlite3 debe agregarse al .gitignore para no subir datos de desarrollo al repositorio.
+  LISTA DE VALIDACIONES — ESTA FASE ESTÁ COMPLETA CUANDO:
+☐
+La estructura de carpetas existe exactamente como se describió en la sección 1.1.
+☐
+El archivo .env existe en /backend/ con todos los campos del .env.example completados.
+☐
+El archivo .env NO está en el repositorio (está en .gitignore).
+☐
+El servidor Django arranca sin errores con: python manage.py runserver
+☐
+La app React del admin arranca sin errores con: npm run dev (puerto 5173).
+☐
+La app React del portal arranca sin errores con: npm run dev (puerto 5174).
+☐
+Django puede conectarse a SQLite: python manage.py dbshell abre la consola sin errores.
+☐
+El comando python manage.py migrate no da errores (solo aplica migraciones iniciales de Django).
+FASE 2  Modelos de Base de Datos
+Definir y crear TODOS los modelos del sistema antes de construir ninguna vista. Esta es la fase más crítica del proyecto.
+⚠️  IMPORTANTE: Esta fase define la estructura de datos completa del sistema. Una vez que las fases siguientes construyan sobre estos modelos, cambiarlos se vuelve costoso. Tomarse el tiempo necesario para hacerlo bien desde el inicio.
+Todos los modelos deben crearse en sus respectivas apps de Django. Cada modelo es una tabla en la base de datos. Se presentan en orden de dependencia: primero los modelos que no dependen de otros, luego los que los referencian.
+2.1 App: users — Usuarios y Roles
+Archivo: backend/apps/users/models.py
+from django.contrib.auth.models import AbstractUser
+from django.db import models
+class User(AbstractUser):
+    """
+    Extiende el usuario de Django con el campo de rol.
+    AbstractUser ya incluye: username, email, first_name, last_name,
+    password, is_active, date_joined.
+    """
+    class Role(models.TextChoices):
+        OWNER  = "owner",  "Dueño"
+        ADMIN  = "admin",  "Administrador"
+        SELLER = "seller", "Vendedor"
+        VIEWER = "viewer", "Visor"
+    role = models.CharField(
+        max_length=10,
+        choices=Role.choices,
+        default=Role.SELLER
+    )
+    # OBLIGATORIO: decirle a Django que use este modelo como AUTH_USER_MODEL
+    # En settings.py agregar: AUTH_USER_MODEL = "users.User"
+    def __str__(self):
+        return f"{self.get_full_name()} ({self.role})"
+⚠️  IMPORTANTE: En settings.py agregar AUTH_USER_MODEL = "users.User" ANTES de la primera migración. Si se hace después, las migraciones fallarán y habrá que resetear la base de datos.
+2.2 App: inventory — Inventario
+Archivo: backend/apps/inventory/models.py
+class Category(models.Model):
+    name        = models.CharField(max_length=100)
+    description = models.TextField(blank=True)
+    parent      = models.ForeignKey(
+        "self", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="subcategories"
+    )
+    order       = models.PositiveIntegerField(default=0)
+    is_active   = models.BooleanField(default=True)
+    created_at  = models.DateTimeField(auto_now_add=True)
+    class Meta:
+        ordering = ["order", "name"]
+        verbose_name_plural = "categories"
+class Product(models.Model):
+    class Status(models.TextChoices):
+        ACTIVE   = "active",   "Activo"
+        INACTIVE = "inactive", "Inactivo"
+        OUT      = "out",      "Agotado"
+    name          = models.CharField(max_length=200)
+    sku_base      = models.CharField(max_length=50, unique=True, blank=True)
+    description   = models.TextField(blank=True)
+    category      = models.ForeignKey(
+        Category, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="products"
+    )
+    cost          = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    price         = models.DecimalField(max_digits=12, decimal_places=2)
+    margin        = models.DecimalField(max_digits=6, decimal_places=4, default=0)
+    is_visible    = models.BooleanField(default=False)  # Visible en portal
+    is_featured   = models.BooleanField(default=False)  # Destacado en portal
+    status        = models.CharField(max_length=10, choices=Status.choices, default=Status.ACTIVE)
+    min_stock     = models.PositiveIntegerField(default=3)  # Umbral de alerta
+    created_at    = models.DateTimeField(auto_now_add=True)
+    updated_at    = models.DateTimeField(auto_now=True)
+    def save(self, *args, **kwargs):
+        # Auto-generar SKU base si está vacío
+        if not self.sku_base:
+            import uuid
+            self.sku_base = str(uuid.uuid4())[:8].upper()
+        super().save(*args, **kwargs)
+class ProductImage(models.Model):
+    product  = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="images")
+    image    = models.ImageField(upload_to="products/")
+    order    = models.PositiveIntegerField(default=0)
+    is_main  = models.BooleanField(default=False)
+    class Meta:
+        ordering = ["order"]
+class ProductVariant(models.Model):
+    product    = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="variants")
+    size       = models.CharField(max_length=20, blank=True)  # Talla: XS, S, M, L, XL, etc.
+    color      = models.CharField(max_length=50, blank=True)  # Color: Negro, Blanco, etc.
+    sku        = models.CharField(max_length=80, unique=True)
+    barcode    = models.CharField(max_length=100, blank=True)
+    price      = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text="Si es null, usa el precio base del producto"
+    )
+    stock      = models.PositiveIntegerField(default=0)
+    is_active  = models.BooleanField(default=True)
+    def get_price(self):
+        return self.price if self.price is not None else self.product.price
+    def save(self, *args, **kwargs):
+        if not self.sku:
+            self.sku = f"{self.product.sku_base}-{self.size}-{self.color}".upper()
+        if not self.barcode:
+            import uuid
+            self.barcode = str(uuid.uuid4().int)[:12]
+        super().save(*args, **kwargs)
+class StockMovement(models.Model):
+    class MovementType(models.TextChoices):
+        ENTRY    = "entry",    "Entrada"
+        SALE     = "sale",     "Venta"
+        RETURN   = "return",   "Devolución"
+        SWAP_IN  = "swap_in",  "Cambio — Entrada"
+        SWAP_OUT = "swap_out", "Cambio — Salida"
+        ADJUST   = "adjust",   "Ajuste manual"
+    variant      = models.ForeignKey(ProductVariant, on_delete=models.PROTECT, related_name="movements")
+    type         = models.CharField(max_length=10, choices=MovementType.choices)
+    quantity     = models.IntegerField()  # Positivo o negativo según tipo
+    note         = models.TextField(blank=True)
+    reference_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="ID de la venta, pedido o cambio relacionado"
+    )
+    created_by   = models.ForeignKey(
+        "users.User", on_delete=models.SET_NULL, null=True
+    )
+    created_at   = models.DateTimeField(auto_now_add=True)
+2.3 App: cash — Caja
+Archivo: backend/apps/cash/models.py
+class CashSession(models.Model):
+    """Una sesión de caja = un día de operación."""
+    class Status(models.TextChoices):
+        OPEN   = "open",   "Abierta"
+        CLOSED = "closed", "Cerrada"
+    date            = models.DateField(unique=True)  # Solo una caja por día
+    opening_amount  = models.DecimalField(max_digits=12, decimal_places=2)
+    closing_amount  = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    counted_amount  = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text="Lo que el usuario contó físicamente al cerrar"
+    )
+    difference      = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    status          = models.CharField(max_length=10, choices=Status.choices, default=Status.OPEN)
+    note            = models.TextField(blank=True)
+    opened_by       = models.ForeignKey("users.User", on_delete=models.SET_NULL, null=True, related_name="opened_sessions")
+    closed_by       = models.ForeignKey("users.User", on_delete=models.SET_NULL, null=True, related_name="closed_sessions", blank=True)
+    opened_at       = models.DateTimeField(auto_now_add=True)
+    closed_at       = models.DateTimeField(null=True, blank=True)
+class CashMovement(models.Model):
+    class MovementType(models.TextChoices):
+        INCOME  = "income",  "Ingreso"
+        EXPENSE = "expense", "Egreso"
+        REFUND  = "refund",  "Devolución a cliente"
+    session      = models.ForeignKey(CashSession, on_delete=models.PROTECT, related_name="movements")
+    type         = models.CharField(max_length=10, choices=MovementType.choices)
+    amount       = models.DecimalField(max_digits=12, decimal_places=2)
+    description  = models.CharField(max_length=255)
+    reference_id = models.PositiveIntegerField(null=True, blank=True)
+    created_by   = models.ForeignKey("users.User", on_delete=models.SET_NULL, null=True)
+    created_at   = models.DateTimeField(auto_now_add=True)
+2.4 App: sales — Ventas
+Archivo: backend/apps/sales/models.py
+class Sale(models.Model):
+    class PaymentMethod(models.TextChoices):
+        CASH     = "cash",     "Efectivo"
+        TRANSFER = "transfer", "Transferencia"
+        DEBIT    = "debit",    "Tarjeta Débito"
+        CREDIT   = "credit",   "Tarjeta Crédito"
+        OTHER    = "other",    "Otro"
+    number         = models.CharField(max_length=20, unique=True)  # Ej: VTA-00042
+    customer       = models.ForeignKey(
+        "customers.Customer", on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="sales"
+    )
+    subtotal       = models.DecimalField(max_digits=12, decimal_places=2)
+    total          = models.DecimalField(max_digits=12, decimal_places=2)
+    points_used    = models.PositiveIntegerField(default=0)
+    points_earned  = models.PositiveIntegerField(default=0)
+    payment_method = models.CharField(max_length=10, choices=PaymentMethod.choices)
+    cash_received  = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    cash_change    = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    note           = models.TextField(blank=True)
+    sold_by        = models.ForeignKey("users.User", on_delete=models.SET_NULL, null=True)
+    cash_session   = models.ForeignKey("cash.CashSession", on_delete=models.PROTECT, null=True)
+    created_at     = models.DateTimeField(auto_now_add=True)
+class SaleItem(models.Model):
+    sale      = models.ForeignKey(Sale, on_delete=models.CASCADE, related_name="items")
+    variant   = models.ForeignKey("inventory.ProductVariant", on_delete=models.PROTECT)
+    quantity  = models.PositiveIntegerField()
+    unit_price = models.DecimalField(max_digits=12, decimal_places=2)
+    subtotal  = models.DecimalField(max_digits=12, decimal_places=2)
+class Return(models.Model):
+    class ReturnType(models.TextChoices):
+        RETURN = "return", "Devolución"
+        SWAP   = "swap",   "Cambio"
+    class Reason(models.TextChoices):
+        DAMAGED  = "damaged",  "Prenda dañada"
+        SIZE     = "size",     "Talla incorrecta"
+        ORDER    = "order",    "Encargo no aceptado"
+        OTHER    = "other",    "Otro"
+    type              = models.CharField(max_length=10, choices=ReturnType.choices)
+    reason            = models.CharField(max_length=10, choices=Reason.choices)
+    original_sale     = models.ForeignKey(Sale, on_delete=models.SET_NULL, null=True, blank=True)
+    returned_variant  = models.ForeignKey(
+        "inventory.ProductVariant", on_delete=models.PROTECT, related_name="returns"
+    )
+    returned_quantity = models.PositiveIntegerField()
+    returned_price    = models.DecimalField(max_digits=12, decimal_places=2)
+    # Si es cambio (swap):
+    swapped_variant   = models.ForeignKey(
+        "inventory.ProductVariant", on_delete=models.PROTECT,
+        null=True, blank=True, related_name="swaps"
+    )
+    swapped_quantity  = models.PositiveIntegerField(null=True, blank=True)
+    swapped_price     = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    price_difference  = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    note              = models.TextField(blank=True)
+    processed_by      = models.ForeignKey("users.User", on_delete=models.SET_NULL, null=True)
+    cash_session      = models.ForeignKey("cash.CashSession", on_delete=models.PROTECT, null=True)
+    created_at        = models.DateTimeField(auto_now_add=True)
+2.5 App: orders — Pedidos del Portal
+Archivo: backend/apps/orders/models.py
+class Order(models.Model):
+    class Status(models.TextChoices):
+        NEW         = "new",         "Nuevo"
+        IN_PROGRESS = "in_progress", "En gestión"
+        CONFIRMED   = "confirmed",   "Confirmado"
+        PREPARING   = "preparing",   "En preparación"
+        SHIPPED     = "shipped",     "Enviado"
+        DELIVERED   = "delivered",   "Entregado"
+        CANCELLED   = "cancelled",   "Cancelado"
+    number          = models.CharField(max_length=20, unique=True)  # Ej: PED-00001
+    customer_name   = models.CharField(max_length=150, blank=True)
+    customer_phone  = models.CharField(max_length=20, blank=True)
+    note            = models.TextField(blank=True)
+    subtotal        = models.DecimalField(max_digits=12, decimal_places=2)
+    total           = models.DecimalField(max_digits=12, decimal_places=2)
+    status          = models.CharField(max_length=15, choices=Status.choices, default=Status.NEW)
+    attended_by     = models.ForeignKey(
+        "users.User", on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="attended_orders"
+    )
+    # Preparado para pasarela de pagos (desactivada)
+    payment_status  = models.CharField(max_length=20, default="pending")
+    payment_method  = models.CharField(max_length=30, blank=True)
+    created_at      = models.DateTimeField(auto_now_add=True)
+    updated_at      = models.DateTimeField(auto_now=True)
+class OrderItem(models.Model):
+    order      = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="items")
+    variant    = models.ForeignKey("inventory.ProductVariant", on_delete=models.PROTECT)
+    quantity   = models.PositiveIntegerField()
+    unit_price = models.DecimalField(max_digits=12, decimal_places=2)
+    subtotal   = models.DecimalField(max_digits=12, decimal_places=2)
+class OrderStatusHistory(models.Model):
+    order      = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="history")
+    status     = models.CharField(max_length=15)
+    note       = models.TextField(blank=True)
+    changed_by = models.ForeignKey("users.User", on_delete=models.SET_NULL, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+2.6 App: customers — Clientes
+Archivo: backend/apps/customers/models.py
+class Customer(models.Model):
+    name       = models.CharField(max_length=150)
+    phone      = models.CharField(max_length=20, blank=True)
+    email      = models.EmailField(blank=True)
+    note       = models.TextField(blank=True)
+    points     = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    @property
+    def segment(self):
+        """Calcula el segmento automáticamente según historial."""
+        from django.utils import timezone
+        from apps.sales.models import Sale
+        now = timezone.now()
+        last_90 = Sale.objects.filter(customer=self, created_at__gte=now - timezone.timedelta(days=90))
+        last_60 = last_90.filter(created_at__gte=now - timezone.timedelta(days=60))
+        last_15 = last_90.filter(created_at__gte=now - timezone.timedelta(days=15))
+        if last_15.count() == 1 and self.created_at >= now - timezone.timedelta(days=15):
+            return "new"
+        if last_60.count() > 3:
+            return "frequent"
+        if last_60.count() >= 1:
+            return "regular"
+        return "inactive"
+class LoyaltyConfig(models.Model):
+    """Configuración del sistema de puntos. Solo debe existir un registro."""
+    is_enabled        = models.BooleanField(default=False)
+    points_per_amount = models.DecimalField(
+        max_digits=10, decimal_places=2, default=1000,
+        help_text="Cada X pesos = 1 punto"
+    )
+    value_per_point   = models.DecimalField(
+        max_digits=10, decimal_places=2, default=50,
+        help_text="Cada punto vale X pesos de descuento"
+    )
+    min_points_redeem = models.PositiveIntegerField(default=100)
+2.7 Aplicar todas las migraciones
+Una vez que todos los modelos están escritos, se crean y aplican las migraciones. El orden importa por las dependencias entre apps:
+# Crear migraciones en orden
+python manage.py makemigrations users
+python manage.py makemigrations customers
+python manage.py makemigrations inventory
+python manage.py makemigrations cash
+python manage.py makemigrations sales
+python manage.py makemigrations orders
+# Aplicar todas las migraciones a la base de datos
+python manage.py migrate
+# Crear el superusuario inicial (el primer "Dueño" del sistema)
+python manage.py createsuperuser
+  LISTA DE VALIDACIONES — ESTA FASE ESTÁ COMPLETA CUANDO:
+☐
+python manage.py makemigrations no genera advertencias ni errores.
+☐
+python manage.py migrate termina con "OK" en todas las migraciones.
+☐
+El archivo db.sqlite3 fue creado en la raiz del proyecto backend tras correr migrate.
+☐
+El Admin de Django (localhost:8000/admin) muestra todos los modelos registrados.
+☐
+Se puede crear un registro de prueba de cada modelo desde el Admin de Django sin errores.
+☐
+El modelo User tiene el campo role y AUTH_USER_MODEL está configurado correctamente.
+☐
+El modelo ProductVariant auto-genera SKU y barcode al guardar con esos campos vacíos.
+☐
+El modelo CashSession tiene la restricción unique=True en el campo date.
+FASE 3  Backend — API REST Completa
+Construir todos los endpoints de la API para cada módulo. El frontend no se toca hasta que esta fase esté completa.
+⚠️  IMPORTANTE: Esta fase construye la API completa antes de hacer el frontend. Esto evita el error común de construir frontend y backend al mismo tiempo y terminar con inconsistencias. Cada endpoint se prueba con una herramienta como Postman, Insomnia o la extensión REST Client de VS Code.
+3.1 Estructura de cada app en el backend
+Cada app de Django debe tener exactamente estos archivos. Esta estructura es uniforme para todas las apps:
+apps/nombre_app/
+├── models.py          ← Ya creado en Fase 2
+├── serializers.py     ← Convierte modelos a JSON y viceversa
+├── views.py           ← Lógica de cada endpoint (ViewSets)
+├── urls.py            ← Rutas de la app
+├── permissions.py     ← Permisos personalizados por rol
+├── filters.py         ← Filtros para búsquedas y listados
+└── tests.py           ← Tests básicos (opcionales pero recomendados)
+3.2 URLs principales — config/urls.py
+El archivo principal de URLs debe registrar todas las apps. Usar el prefijo /api/v1/ para todos los endpoints:
+from django.contrib import admin
+from django.urls import path, include
+from django.conf import settings
+from django.conf.urls.static import static
+urlpatterns = [
+    path("admin/", admin.site.urls),
+    path("api/v1/auth/",      include("apps.users.urls")),
+    path("api/v1/inventory/", include("apps.inventory.urls")),
+    path("api/v1/sales/",     include("apps.sales.urls")),
+    path("api/v1/orders/",    include("apps.orders.urls")),
+    path("api/v1/customers/", include("apps.customers.urls")),
+    path("api/v1/cash/",      include("apps.cash.urls")),
+    path("api/v1/reports/",   include("apps.reports.urls")),
+    path("api/v1/config/",    include("apps.users.config_urls")),
+] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+3.3 Sistema de Permisos por Rol
+Crear el archivo backend/apps/users/permissions.py con las clases de permisos reutilizables en todo el sistema:
+from rest_framework.permissions import BasePermission
+class IsOwner(BasePermission):
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and request.user.role == "owner"
+class IsOwnerOrAdmin(BasePermission):
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and request.user.role in ["owner", "admin"]
+class IsOwnerAdminOrSeller(BasePermission):
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and request.user.role in ["owner", "admin", "seller"]
+class CanViewOnly(BasePermission):
+    """Visor: solo puede hacer GET."""
+    def has_permission(self, request, view):
+        if not request.user.is_authenticated:
+            return False
+        if request.user.role == "viewer":
+            return request.method in ["GET", "HEAD", "OPTIONS"]
+        return True
+3.4 Tabla de endpoints de la API
+Estos son TODOS los endpoints que debe tener el sistema. Se construyen en el mismo orden de las fases siguientes:
+Método
+Endpoint
+Descripción
+Rol mínimo
+POST
+/api/v1/auth/login/
+Obtener token JWT
+Público
+POST
+/api/v1/auth/refresh/
+Refrescar token JWT
+Autenticado
+GET
+/api/v1/auth/me/
+Datos del usuario logueado
+Autenticado
+GET/POST
+/api/v1/auth/users/
+Listar / crear usuarios del equipo
+Owner
+GET/PUT/DELETE
+/api/v1/auth/users/{id}/
+Ver / editar / desactivar usuario
+Owner
+GET/POST
+/api/v1/inventory/categories/
+Listar / crear categorías
+Owner/Admin
+GET/PUT/DELETE
+/api/v1/inventory/categories/{id}/
+Ver / editar / eliminar categoría
+Owner/Admin
+GET/POST
+/api/v1/inventory/products/
+Listar / crear productos
+Owner/Admin
+GET/PUT/DELETE
+/api/v1/inventory/products/{id}/
+Ver / editar / eliminar producto
+Owner/Admin
+POST
+/api/v1/inventory/products/import/
+Importar productos desde CSV
+Owner/Admin
+GET/POST
+/api/v1/inventory/variants/
+Listar / crear variantes
+Owner/Admin
+GET/PUT/DELETE
+/api/v1/inventory/variants/{id}/
+Ver / editar / eliminar variante
+Owner/Admin
+GET/POST
+/api/v1/inventory/movements/
+Listar / crear movimientos de stock
+Owner/Admin
+GET/POST
+/api/v1/sales/
+Listar / crear ventas
+Owner/Admin/Seller
+GET
+/api/v1/sales/{id}/
+Ver detalle de venta
+Owner/Admin
+GET/POST
+/api/v1/sales/returns/
+Listar / crear devoluciones y cambios
+Owner/Admin
+GET
+/api/v1/sales/returns/{id}/
+Ver detalle de devolución/cambio
+Owner/Admin
+GET
+/api/v1/cash/sessions/
+Listar sesiones de caja
+Owner/Admin
+POST
+/api/v1/cash/sessions/
+Abrir caja (crear sesión)
+Owner/Admin
+GET
+/api/v1/cash/sessions/{id}/
+Ver detalle de sesión
+Owner/Admin
+POST
+/api/v1/cash/sessions/{id}/close/
+Cerrar caja
+Owner/Admin
+GET/POST
+/api/v1/cash/movements/
+Listar / crear movimientos de caja
+Owner/Admin
+GET/POST
+/api/v1/orders/
+Listar / crear pedidos
+Owner/Admin / Público (POST)
+GET/PUT
+/api/v1/orders/{id}/
+Ver / actualizar estado de pedido
+Owner/Admin
+GET/POST
+/api/v1/customers/
+Listar / crear clientes
+Owner/Admin
+GET/PUT
+/api/v1/customers/{id}/
+Ver / editar cliente
+Owner/Admin
+GET
+/api/v1/reports/dashboard/
+Datos del dashboard principal
+Owner/Admin/Viewer
+GET
+/api/v1/reports/sales/
+Reporte de ventas con filtros
+Owner/Admin/Viewer
+GET
+/api/v1/reports/inventory/
+Reporte de inventario
+Owner/Admin/Viewer
+GET
+/api/v1/reports/export/sales/
+Exportar ventas a Excel/PDF
+Owner/Admin
+GET
+/api/v1/store/products/
+Catálogo público (solo visibles)
+Público
+GET
+/api/v1/store/products/{id}/
+Detalle de producto público
+Público
+GET
+/api/v1/store/categories/
+Categorías con productos visibles
+Público
+POST
+/api/v1/store/orders/
+Crear pedido desde portal
+Público
+GET
+/api/v1/store/config/
+Configuración pública de la tienda
+Público
+GET/PUT
+/api/v1/config/store/
+Leer / actualizar configuración de tienda
+Owner
+GET/PUT
+/api/v1/config/loyalty/
+Leer / actualizar config de fidelización
+Owner
+GET/PUT
+/api/v1/config/messages/
+Leer / actualizar plantillas WhatsApp
+Owner
+3.5 Patrón de construcción de cada endpoint
+Para cada endpoint, siempre seguir este orden: primero el serializer, luego el view, luego la URL. No al revés.
+# PASO 1 — serializers.py
+# Ejemplo para Producto:
+from rest_framework import serializers
+from .models import Product, ProductVariant, ProductImage
+class ProductImageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProductImage
+        fields = ["id", "image", "order", "is_main"]
+class ProductVariantSerializer(serializers.ModelSerializer):
+    effective_price = serializers.SerializerMethodField()
+    class Meta:
+        model = ProductVariant
+        fields = ["id", "size", "color", "sku", "barcode", "price", "effective_price", "stock", "is_active"]
+    def get_effective_price(self, obj):
+        return obj.get_price()
+class ProductSerializer(serializers.ModelSerializer):
+    variants = ProductVariantSerializer(many=True, read_only=True)
+    images   = ProductImageSerializer(many=True, read_only=True)
+    class Meta:
+        model = Product
+        fields = "__all__"
+# PASO 2 — views.py
+from rest_framework import viewsets, filters
+from django_filters.rest_framework import DjangoFilterBackend
+from .models import Product
+from .serializers import ProductSerializer
+from apps.users.permissions import IsOwnerOrAdmin
+class ProductViewSet(viewsets.ModelViewSet):
+    queryset = Product.objects.prefetch_related("variants", "images").all()
+    serializer_class = ProductSerializer
+    permission_classes = [IsOwnerOrAdmin]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ["category", "status", "is_visible"]
+    search_fields    = ["name", "sku_base"]
+    ordering_fields  = ["name", "price", "created_at"]
+# PASO 3 — urls.py
+from rest_framework.routers import DefaultRouter
+from .views import ProductViewSet
+router = DefaultRouter()
+router.register(r"products", ProductViewSet)
+urlpatterns = router.urls
+3.6 Endpoint especial — Crear Pedido desde el Portal (Público)
+Este es el único endpoint POST que no requiere autenticación. Al crear el pedido, el sistema debe: validar que cada variante existe y tiene stock suficiente, calcular subtotales y total, generar el número de pedido automáticamente (PED-00001, PED-00002...), y retornar los datos del pedido creado para la pantalla de confirmación del portal.
+class StoreOrderCreateView(generics.CreateAPIView):
+    permission_classes = []  # Público, sin autenticación
+    authentication_classes = []
+    def create(self, request):
+        items_data = request.data.get("items", [])
+        # 1. Validar stock de cada ítem
+        for item in items_data:
+            variant = ProductVariant.objects.get(id=item["variant_id"])
+            if variant.stock < item["quantity"]:
+                return Response({
+                    "error": f"Stock insuficiente para {variant.product.name} - {variant.size} {variant.color}"
+                }, status=400)
+        # 2. Crear el pedido
+        # ... lógica de creación ...
+        # 3. Guardar en BD con status="new"
+        # 4. Retornar datos del pedido
+  LISTA DE VALIDACIONES — ESTA FASE ESTÁ COMPLETA CUANDO:
+☐
+Todos los endpoints de la tabla 3.4 están implementados y responden con status 200 o 201.
+☐
+Los endpoints que requieren autenticación retornan 401 si se llaman sin token JWT.
+☐
+Los endpoints con permisos de rol retornan 403 si el usuario no tiene el rol requerido.
+☐
+El endpoint /api/v1/store/orders/ (POST) funciona SIN token y crea el pedido correctamente.
+☐
+El endpoint /api/v1/store/products/ solo retorna productos con is_visible=True.
+☐
+Al crear una venta (POST /api/v1/sales/), el stock de cada variante vendida se descuenta automáticamente.
+☐
+Al crear una devolución, el stock de la variante devuelta sube automáticamente.
+☐
+Al crear un cambio, el stock de la variante devuelta sube y el de la nueva variante baja.
+☐
+Los campos de número auto-generado (VTA-00001, PED-00001) no se repiten y se incrementan correctamente.
+☐
+El endpoint /api/v1/reports/dashboard/ retorna ventas del día, pedidos nuevos y productos con stock bajo.
+FASE 4  Panel de Administración — UI Base
+Construir la estructura base del frontend del Panel Admin: layout, navegación, sistema de autenticación y conexión con la API.
+4.1 Estructura de carpetas del frontend Admin
+frontend/admin/src/
+├── api/
+│   ├── client.js          ← Instancia de Axios con interceptores JWT
+│   ├── auth.js            ← Funciones: login, logout, getMe
+│   ├── inventory.js       ← Funciones para endpoints de inventario
+│   ├── sales.js           ← Funciones para endpoints de ventas
+│   ├── orders.js          ← Funciones para endpoints de pedidos
+│   ├── customers.js       ← Funciones para endpoints de clientes
+│   ├── cash.js            ← Funciones para endpoints de caja
+│   └── reports.js         ← Funciones para endpoints de reportes
+├── components/
+│   ├── layout/
+│   │   ├── Sidebar.jsx
+│   │   ├── Topbar.jsx
+│   │   └── Layout.jsx     ← Envuelve Sidebar + Topbar + contenido
+│   ├── ui/
+│   │   ├── Button.jsx
+│   │   ├── Input.jsx
+│   │   ├── Modal.jsx
+│   │   ├── Table.jsx
+│   │   ├── Badge.jsx
+│   │   ├── Card.jsx
+│   │   └── Spinner.jsx
+│   └── shared/
+│       ├── ConfirmDialog.jsx
+│       └── EmptyState.jsx
+├── pages/
+│   ├── Login.jsx
+│   ├── Dashboard.jsx
+│   ├── inventory/
+│   │   ├── ProductList.jsx
+│   │   ├── ProductForm.jsx
+│   │   ├── ProductDetail.jsx
+│   │   └── CategoryManager.jsx
+│   ├── sales/
+│   │   ├── SalesList.jsx
+│   │   ├── NewSale.jsx
+│   │   └── Returns.jsx
+│   ├── orders/
+│   │   ├── OrdersList.jsx
+│   │   └── OrderDetail.jsx
+│   ├── customers/
+│   │   ├── CustomersList.jsx
+│   │   └── CustomerDetail.jsx
+│   ├── cash/
+│   │   ├── CashSession.jsx
+│   │   └── CashHistory.jsx
+│   ├── QuickSale.jsx      ← Vista exclusiva para rol Vendedor
+│   └── settings/
+│       ├── StoreConfig.jsx
+│       ├── UsersManager.jsx
+│       ├── LoyaltyConfig.jsx
+│       └── WhatsAppMessages.jsx
+├── context/
+│   └── AuthContext.jsx    ← Estado global de autenticación
+├── hooks/
+│   ├── useAuth.js
+│   └── usePermission.js
+├── router/
+│   └── AppRouter.jsx      ← Rutas con protección por rol
+└── main.jsx
+4.2 Cliente API — api/client.js
+Este archivo es el núcleo de la comunicación con el backend. Todos los demás archivos de la carpeta api/ usan esta instancia de Axios. Configurarlo correctamente desde el inicio evita problemas de autenticación en toda la aplicación:
+import axios from "axios";
+const client = axios.create({
+  baseURL: import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1",
+});
+// Interceptor de REQUEST: agrega el token JWT a cada petición
+client.interceptors.request.use((config) => {
+  const token = localStorage.getItem("access_token");
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+// Interceptor de RESPONSE: si el token venció (401), redirige al login
+client.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("refresh_token");
+      window.location.href = "/login";
+    }
+    return Promise.reject(error);
+  }
+);
+export default client;
+4.3 Sistema de rutas con protección por rol — AppRouter.jsx
+Las rutas del panel admin deben estar protegidas. Un usuario no autenticado debe ser redirigido al login. Un usuario autenticado no debe poder acceder a rutas fuera de su rol:
+import { Routes, Route, Navigate } from "react-router-dom";
+import { useAuth } from "../hooks/useAuth";
+// Ruta protegida: solo usuarios autenticados
+function PrivateRoute({ children }) {
+  const { user } = useAuth();
+  return user ? children : <Navigate to="/login" replace />;
+}
+// Ruta protegida por rol
+function RoleRoute({ children, allowedRoles }) {
+  const { user } = useAuth();
+  if (!user) return <Navigate to="/login" replace />;
+  if (!allowedRoles.includes(user.role)) return <Navigate to="/" replace />;
+  return children;
+}
+export default function AppRouter() {
+  return (
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
+        <Route index element={<Dashboard />} />
+        <Route path="inventario/*" element={
+          <RoleRoute allowedRoles={["owner","admin"]}><InventarioRoutes /></RoleRoute>
+        } />
+        <Route path="ventas-rapidas" element={
+          <RoleRoute allowedRoles={["owner","admin","seller"]}><QuickSale /></RoleRoute>
+        } />
+        <Route path="configuracion/*" element={
+          <RoleRoute allowedRoles={["owner"]}><SettingsRoutes /></RoleRoute>
+        } />
+        {/* ... demás rutas ... */}
+      </Route>
+    </Routes>
+  );
+}
+4.4 Sidebar — navegación por rol
+El sidebar debe mostrar solo los ítems de menú accesibles para el rol del usuario logueado. Definir la lista de ítems de navegación como un array de objetos con su campo allowedRoles, y filtrar este array según el usuario actual antes de renderizar:
+const NAV_ITEMS = [
+  { label: "Dashboard",     path: "/",              icon: LayoutDashboard,  roles: ["owner","admin","viewer"] },
+  { label: "Inventario",    path: "/inventario",    icon: Package,          roles: ["owner","admin"] },
+  { label: "Ventas",        path: "/ventas",        icon: ShoppingCart,     roles: ["owner","admin"] },
+  { label: "Venta Rápida",  path: "/ventas-rapidas",icon: Zap,              roles: ["owner","admin","seller"] },
+  { label: "Pedidos",       path: "/pedidos",       icon: ClipboardList,    roles: ["owner","admin"] },
+  { label: "Clientes",      path: "/clientes",      icon: Users,            roles: ["owner","admin"] },
+  { label: "Caja",          path: "/caja",          icon: Wallet,           roles: ["owner","admin"] },
+  { label: "Reportes",      path: "/reportes",      icon: BarChart2,        roles: ["owner","admin","viewer"] },
+  { label: "Configuración", path: "/configuracion", icon: Settings,         roles: ["owner"] },
+];
+// En el componente Sidebar:
+const { user } = useAuth();
+const visibleItems = NAV_ITEMS.filter(item => item.roles.includes(user.role));
+  LISTA DE VALIDACIONES — ESTA FASE ESTÁ COMPLETA CUANDO:
+☐
+El login funciona: al ingresar credenciales correctas, se guarda el JWT en localStorage y se redirige al dashboard.
+☐
+Al refrescar la página, el usuario sigue logueado (el token persiste en localStorage).
+☐
+Al ingresar credenciales incorrectas, aparece un mensaje de error sin recargar la página.
+☐
+Un usuario con rol "seller" solo ve en el sidebar los ítems de su rol (Dashboard y Venta Rápida).
+☐
+Si un seller intenta acceder manualmente a /inventario por la URL del navegador, es redirigido.
+☐
+El botón "Cerrar sesión" elimina el token y redirige al login.
+☐
+El Topbar muestra el nombre y rol del usuario logueado correctamente.
+☐
+Las peticiones al backend incluyen el header "Authorization: Bearer [token]".
+☐
+Si el token vence, la app redirige automáticamente al login en la siguiente petición.
+FASE 5  Módulo de Inventario — UI Completa
+Construir todas las pantallas del módulo de inventario en el Panel Admin.
+5.1 Pantalla: Lista de Productos
+Página principal de inventario. Elementos a implementar en orden:
+Tabla paginada que consume GET /api/v1/inventory/products/ con los campos: imagen miniatura, nombre, categoría, variantes activas (conteo), stock total (suma de todas las variantes), precio, estado (badge de color), visibilidad en catálogo (toggle).
+Barra de búsqueda que filtra por nombre en tiempo real (con debounce de 400ms para no hacer una petición por cada tecla).
+Filtros desplegables: por categoría, por estado, por visibilidad. Los filtros se pasan como query params al endpoint.
+Botón "Nuevo Producto" que navega a la página del formulario.
+Menú de acciones por fila (tres puntos): Editar, Duplicar, Activar/Desactivar.
+Paginación en la parte inferior: página actual, total de páginas, botones anterior/siguiente.
+5.2 Formulario de Producto — Lógica del triángulo financiero
+La lógica de costo/margen/precio es la más delicada de este formulario. Se implementa con un useEffect que observa los tres campos:
+const [cost, setCost]     = useState(0);
+const [margin, setMargin] = useState(0);
+const [price, setPrice]   = useState(0);
+const [lastEdited, setLastEdited] = useState(null); // "cost","margin" o "price"
+useEffect(() => {
+  if (lastEdited === "cost" || lastEdited === "margin") {
+    // Recalcular precio
+    if (margin < 100 && margin >= 0) {
+      const newPrice = cost / (1 - margin / 100);
+      setPrice(parseFloat(newPrice.toFixed(2)));
+    }
+  } else if (lastEdited === "price") {
+    // Recalcular margen
+    if (price > 0 && cost >= 0) {
+      const newMargin = ((price - cost) / price) * 100;
+      setMargin(parseFloat(newMargin.toFixed(4)));
+    }
+  }
+}, [cost, margin, price, lastEdited]);
+// Cada input llama a setLastEdited con su nombre antes de actualizar el valor:
+// onChange={(e) => { setLastEdited("cost"); setCost(+e.target.value); }}
+5.3 Formulario de Producto — Gestión de variantes
+La sección de variantes debe permitir:
+Agregar tallas disponibles para este producto (chips editables: XS, S, M, L, XL, o texto libre).
+Agregar colores disponibles para este producto (chips editables).
+Al confirmar tallas y colores, el sistema genera automáticamente la matriz de combinaciones en el frontend (sin llamar al backend aún).
+Mostrar la matriz como una tabla: cada fila es una combinación, con columnas para talla, color, precio (pre-llenado con el precio base, editable), stock inicial, y un botón de eliminar esa combinación.
+Al guardar el producto, enviar primero el POST del producto, luego un POST por cada variante de la matriz usando el ID del producto recién creado.
+5.4 Pantalla: Movimientos de Inventario
+Formulario para registrar entradas manuales o ajustes de stock:
+Selector de producto (búsqueda por nombre).
+Selector de variante (según el producto elegido).
+Tipo de movimiento: Entrada o Ajuste (las Salidas se generan automáticamente con ventas).
+Cantidad: número positivo para entradas, puede ser negativo para ajustes.
+Nota obligatoria para ajustes manuales (explicar por qué se ajusta el stock).
+Al confirmar: POST a /api/v1/inventory/movements/ y el backend actualiza el stock de la variante.
+  LISTA DE VALIDACIONES — ESTA FASE ESTÁ COMPLETA CUANDO:
+☐
+Se puede crear un producto con variantes desde el formulario y aparece en la lista.
+☐
+El triángulo financiero funciona: editar costo y margen recalcula el precio; editar precio recalcula el margen.
+☐
+El toggle "Visible en catálogo" del producto funciona y el cambio se persiste en el backend.
+☐
+La búsqueda y los filtros funcionan correctamente en la lista de productos.
+☐
+Se puede registrar una entrada de stock y el stock de la variante aumenta en la base de datos.
+☐
+Se puede crear una categoría y aparece disponible en el selector del formulario de producto.
+☐
+Las imágenes se pueden subir y la miniatura aparece en la lista de productos.
+☐
+Un producto sin variantes de stock (todas en 0) cambia su estado a "Agotado" automáticamente.
+FASE 6  Módulos de Caja y Ventas — UI
+Construir las pantallas de caja, registro de ventas, devoluciones y cambios.
+6.1 Pantalla de Caja
+La pantalla de caja tiene dos estados visuales completamente distintos que se renderizan condicionalmente según si hay una sesión abierta hoy:
+Al cargar la página: hacer GET /api/v1/cash/sessions/?date=HOY. Si no hay sesión abierta hoy, mostrar el formulario de apertura. Si ya hay una sesión abierta, mostrar el panel de caja activa.
+Formulario de apertura: un solo campo numérico "Monto inicial" y el botón "Abrir caja". Al confirmar: POST /api/v1/cash/sessions/ con el monto ingresado.
+Panel de caja activa: tarjetas con monto inicial, ingresos, egresos, devoluciones y efectivo actual. Tabla de movimientos del día. Botón para registrar egreso manual. Botón "Cerrar caja".
+Cierre de caja: formulario que pide el monto contado físicamente. Muestra la diferencia calculada. Botón confirmar cierre: POST /api/v1/cash/sessions/{id}/close/.
+6.2 Pantalla de Registro de Venta
+Implementar como un flujo de dos columnas: izquierda el buscador de productos para armar el carrito, derecha el resumen del carrito y confirmación:
+Verificar que hay una caja abierta hoy antes de permitir registrar ventas. Si no hay caja, mostrar alerta y botón para ir a abrir caja.
+Buscador de productos: campo de texto que consulta /api/v1/inventory/products/?search=... con los resultados mostrando el nombre y variantes disponibles.
+Al seleccionar un producto, mostrar selector de variante (talla + color + stock disponible). Si el stock es 0, la variante aparece deshabilitada.
+Agregar al carrito: ícono "+" agrega el ítem al carrito derecho con cantidad 1. El usuario puede cambiar la cantidad con botones +/-.
+Resumen del carrito: lista de ítems, subtotal, y si el sistema de puntos está activo y hay un cliente seleccionado con puntos, mostrar opción de canjear.
+Selector de método de pago. Si es efectivo, campo "Recibido" y cálculo automático del cambio: cambio = recibido - total.
+Al confirmar: POST /api/v1/sales/ con todos los datos. El backend crea la venta, descuenta stock y registra el movimiento en caja. Mostrar confirmación y limpiar el carrito.
+6.3 Vista de Venta Rápida (rol Vendedor)
+Esta pantalla es esencialmente la misma que el registro de venta pero con un diseño simplificado para móvil. Diferencias clave:
+No muestra costo ni margen de ningún producto.
+Botones de producto más grandes, diseñados para touch.
+No tiene acceso a reportes, caja, ni otras secciones.
+El layout no tiene el sidebar completo, solo un header mínimo con el logo y el ícono de cerrar sesión.
+6.4 Pantalla de Devoluciones y Cambios
+Un formulario con selector de tipo (Devolución o Cambio) al inicio que cambia los campos disponibles:
+Para Devolución: buscar producto devuelto → seleccionar variante → cantidad → motivo → monto a devolver (precargado del precio original, editable) → confirmar. El sistema hace un movimiento de entrada en inventario y un egreso en caja.
+Para Cambio: buscar prenda devuelta (lo mismo de arriba) + buscar prenda nueva que el cliente se lleva → variante → cantidad. El sistema calcula la diferencia de precio automáticamente y la muestra con claridad ("El cliente debe pagar $X adicional" o "La tienda debe devolver $X"). Al confirmar, se crean dos movimientos de inventario y el ajuste de caja correspondiente.
+  LISTA DE VALIDACIONES — ESTA FASE ESTÁ COMPLETA CUANDO:
+☐
+La pantalla de caja muestra el formulario de apertura cuando no hay caja abierta hoy.
+☐
+Después de abrir caja, el panel activo muestra el monto inicial correctamente.
+☐
+Al registrar una venta en efectivo, el monto ingresado y el cambio a devolver se calculan correctamente.
+☐
+Al confirmar una venta, el stock de cada variante vendida baja en la base de datos.
+☐
+Al confirmar una venta, el ingreso correspondiente aparece en los movimientos de caja del día.
+☐
+El cierre de caja muestra la diferencia entre el monto calculado y el contado correctamente.
+☐
+Al registrar una devolución, el stock de la variante devuelta sube.
+☐
+Al registrar un cambio, el stock de la variante devuelta sube y el de la nueva baja.
+☐
+Un usuario con rol "seller" puede registrar ventas desde la Vista de Venta Rápida.
+☐
+La Vista de Venta Rápida no muestra el costo de los productos.
+☐
+No se puede registrar una venta si no hay caja abierta (el sistema lo bloquea con mensaje claro).
+FASE 7  Módulos de Pedidos y Clientes — UI
+Construir las pantallas de gestión de pedidos del portal y el CRM de clientes.
+7.1 Pantalla de Lista de Pedidos
+Tabla de pedidos con badge de color por estado. Los pedidos en estado "Nuevo" deben tener un color de resalte diferente (por ejemplo fondo amarillo claro en la fila) para que el equipo los detecte inmediatamente. La tabla se auto-actualiza cada 60 segundos mediante polling (sin necesidad de WebSockets), haciendo un GET al endpoint de pedidos y actualizando el estado local si hay cambios.
+7.2 Pantalla de Detalle de Pedido
+Al abrir un pedido, mostrar toda su información. Los elementos interactivos clave:
+Selector de estado: un dropdown o botones de estado que permiten avanzar el pedido. Al cambiar el estado, hacer PUT /api/v1/orders/{id}/ y actualizar la vista.
+Botón "Notificar por WhatsApp": abre la URL de WhatsApp con el mensaje prellenado. La URL tiene la estructura: https://wa.me/{STORE_WHATSAPP}?text={mensaje_codificado}. El mensaje se construye en el frontend usando la plantilla configurada y reemplazando las variables con los datos reales del pedido.
+Timeline del historial de estados: mostrar cronológicamente todos los cambios de estado con fecha, hora y usuario.
+7.3 Construcción del mensaje de WhatsApp
+La función que construye el mensaje es compartida entre el Módulo de Pedidos y el Portal de Clientes. Colocarla en un archivo utilitario para no duplicar código:
+// utils/whatsapp.js — usada en el Admin Y en el Portal
+export function buildWhatsAppUrl(phoneNumber, message) {
+  const encoded = encodeURIComponent(message);
+  return `https://wa.me/${phoneNumber}?text=${encoded}`;
+}
+export function buildOrderMessage(order, template) {
+  const productLines = order.items.map(item =>
+    `  - ${item.variant.product.name} talla ${item.variant.size} color ${item.variant.color} x${item.quantity} — $${item.subtotal.toLocaleString("es-CO")}`
+  ).join("\n");
+  return template
+    .replace("{nombre_cliente}", order.customer_name || "Cliente")
+    .replace("{numero_pedido}", order.number)
+    .replace("{productos}", productLines)
+    .replace("{total}", `$${order.total.toLocaleString("es-CO")}`)
+    .replace("{estado}", order.status_display);
+}
+7.4 Pantalla de Clientes
+Lista de clientes con badge de segmento (Frecuente, Regular, Nuevo, Inactivo). Al abrir un cliente, mostrar: datos de contacto, historial completo de compras (ventas y pedidos asociados a ese cliente), total acumulado, y si el sistema de puntos está activo, saldo de puntos con botón para registrar canje manual.
+  LISTA DE VALIDACIONES — ESTA FASE ESTÁ COMPLETA CUANDO:
+☐
+La lista de pedidos muestra los pedidos en estado "Nuevo" con resalte visual diferenciado.
+☐
+La lista de pedidos se actualiza automáticamente sin recargar la página.
+☐
+Al cambiar el estado de un pedido, el cambio se persiste y aparece en el historial del pedido.
+☐
+El botón "Notificar por WhatsApp" abre WhatsApp con el número correcto de la tienda y el mensaje prellenado con los datos reales del pedido.
+☐
+El badge de segmento del cliente se calcula correctamente según su historial de compras.
+☐
+El historial de compras del cliente muestra todas sus ventas y pedidos asociados.
+FASE 8  Portal de Clientes — UI Completa
+Construir la tienda virtual pública desde cero. Esta app React es independiente del panel admin.
+⚠️  IMPORTANTE: El Portal de Clientes es una app React completamente separada (/frontend/store/). No comparte componentes ni estado con el Panel Admin. Sí puede compartir archivos de utilidades como la función de WhatsApp descrita en la fase anterior, copiando el archivo o usando un paquete compartido.
+8.1 Estructura del Portal de Clientes
+frontend/store/src/
+├── api/
+│   └── storeClient.js     ← Axios sin autenticación (todo es público)
+├── components/
+│   ├── Header.jsx          ← Logo, nombre tienda, ícono carrito con contador
+│   ├── Footer.jsx          ← Info tienda, WhatsApp, política
+│   ├── ProductCard.jsx     ← Tarjeta de producto en la cuadrícula
+│   ├── FilterPanel.jsx     ← Panel de filtros (categoría, talla, color, precio)
+│   ├── CartDrawer.jsx      ← Carrito lateral deslizable
+│   └── ProductGallery.jsx  ← Galería de imágenes en el detalle
+├── context/
+│   └── CartContext.jsx     ← Estado global del carrito (useContext + useReducer)
+├── pages/
+│   ├── Home.jsx
+│   ├── Catalog.jsx
+│   ├── ProductDetail.jsx
+│   └── OrderConfirmation.jsx
+├── utils/
+│   └── whatsapp.js         ← Copiada de la fase anterior
+└── main.jsx
+8.2 Estado del Carrito — CartContext.jsx
+El carrito vive en un Context de React usando useReducer. El estado del carrito se persiste en localStorage para que no se pierda si el usuario cierra la pestaña accidentalmente:
+const initialState = {
+  items: JSON.parse(localStorage.getItem("cart_items") || "[]")
+};
+function cartReducer(state, action) {
+  switch (action.type) {
+    case "ADD_ITEM": {
+      const exists = state.items.find(i =>
+        i.variant_id === action.payload.variant_id
+      );
+      if (exists) {
+        // Incrementar cantidad (sin exceder stock)
+        const updated = state.items.map(i =>
+          i.variant_id === action.payload.variant_id
+            ? { ...i, quantity: Math.min(i.quantity + action.payload.quantity, i.max_stock) }
+            : i
+        );
+        return { ...state, items: updated };
+      }
+      return { ...state, items: [...state.items, action.payload] };
+    }
+    case "REMOVE_ITEM":
+      return { ...state, items: state.items.filter(i => i.variant_id !== action.payload) };
+    case "UPDATE_QUANTITY":
+      return { ...state, items: state.items.map(i =>
+        i.variant_id === action.payload.variant_id
+          ? { ...i, quantity: action.payload.quantity }
+          : i
+      )};
+    case "CLEAR":
+      return { ...state, items: [] };
+    default:
+      return state;
+  }
+}
+// Sincronizar con localStorage en cada cambio
+useEffect(() => {
+  localStorage.setItem("cart_items", JSON.stringify(state.items));
+}, [state.items]);
+8.3 Flujo de finalización del pedido
+Al hacer clic en "Finalizar pedido por WhatsApp", el flujo tiene dos pasos simultáneos:
+Crear el pedido en la base de datos: POST /api/v1/store/orders/ con los ítems del carrito, el nombre y teléfono del cliente (opcionales), y la nota. Si el backend responde con error de stock insuficiente, mostrar el mensaje de error específico.
+Si el pedido se crea exitosamente: construir el mensaje de WhatsApp con la función buildOrderMessage(), construir la URL de WhatsApp con buildWhatsAppUrl(), y usar window.open(url, "_blank") para abrir WhatsApp. Luego vaciar el carrito y redirigir a la página de confirmación.
+8.4 Diseño del portal — Mobile First
+El portal debe diseñarse primero para pantallas de 375px de ancho (iPhone SE) y expandirse hacia arriba. Reglas de diseño obligatorias:
+El header tiene altura máxima de 60px en móvil.
+La cuadrícula del catálogo es de 2 columnas en móvil, 3 en tableta (768px), 4 en escritorio (1280px).
+Los botones de acción (Agregar al carrito, Finalizar pedido) tienen mínimo 48px de alto para ser fácilmente tapeables.
+El panel de filtros en móvil es un drawer que se abre desde un botón "Filtrar", no una columna lateral visible siempre.
+El carrito es un drawer que aparece desde la derecha, ocupando el 85% del ancho de pantalla en móvil.
+  LISTA DE VALIDACIONES — ESTA FASE ESTÁ COMPLETA CUANDO:
+☐
+El portal carga sin login y muestra los productos marcados como visibles en el panel admin.
+☐
+Los filtros de categoría, talla, color y precio funcionan correctamente y se combinan entre sí.
+☐
+La página de detalle muestra correctamente las variantes disponibles y las agotadas deshabilitadas.
+☐
+Al agregar al carrito, el contador del ícono de carrito en el header se actualiza.
+☐
+Al refrescar la página del portal, los ítems del carrito se conservan (localStorage).
+☐
+El flujo de pedido por WhatsApp: crea el pedido en la BD, abre WhatsApp con el mensaje correcto, vacía el carrito y muestra la pantalla de confirmación.
+☐
+Si una variante se agota entre que el cliente la agrega al carrito y finaliza el pedido, el backend retorna error y el portal muestra un mensaje claro.
+☐
+El portal se ve correctamente en móvil (probado con las herramientas de responsive del navegador a 375px).
+☐
+Al crear un pedido desde el portal, aparece en estado "Nuevo" en el Panel Admin.
+FASE 9  Dashboard, Métricas y Reportes
+Construir el dashboard con KPIs en tiempo real, las gráficas de tendencia y los reportes exportables.
+9.1 Endpoint del Dashboard
+El endpoint GET /api/v1/reports/dashboard/ debe calcular y retornar en una sola respuesta todos estos datos para minimizar el número de peticiones del frontend:
+# Vista en apps/reports/views.py
+class DashboardView(APIView):
+    permission_classes = [CanViewOnly]
+    def get(self, request):
+        from django.utils import timezone
+        from django.db.models import Sum, Count
+        today = timezone.now().date()
+        now = timezone.now()
+        # Ventas del día
+        today_sales = Sale.objects.filter(created_at__date=today)
+        today_revenue = today_sales.aggregate(total=Sum("total"))["total"] or 0
+        # Pedidos nuevos sin atender
+        new_orders = Order.objects.filter(status="new").count()
+        # Productos con stock bajo
+        low_stock_variants = ProductVariant.objects.filter(
+            stock__gt=0,
+            stock__lte=models.F("product__min_stock")
+        ).count()
+        # Productos agotados (stock = 0)
+        out_of_stock = ProductVariant.objects.filter(stock=0, is_active=True).count()
+        # Caja actual
+        today_session = CashSession.objects.filter(date=today, status="open").first()
+        # Ventas de los últimos 30 días (para la gráfica)
+        sales_30d = []  # Array de {date, total} para los últimos 30 días
+        # Top 5 productos más vendidos
+        top_products = []  # Basado en SaleItem del último mes
+        # Predicción de reabastecimiento
+        restock_alerts = []  # Variantes con días_restantes < 10
+        return Response({
+            "today_revenue": today_revenue,
+            "today_sales_count": today_sales.count(),
+            "new_orders": new_orders,
+            "low_stock_count": low_stock_variants,
+            "out_of_stock_count": out_of_stock,
+            "cash_session": {...} if today_session else None,
+            "sales_chart": sales_30d,
+            "top_products": top_products,
+            "restock_alerts": restock_alerts,
+        })
+9.2 Cálculo de Predicción de Reabastecimiento
+La lógica de predicción se calcula en el backend como parte de la respuesta del dashboard. Para cada variante activa:
+from django.db.models import Sum
+from django.utils import timezone
+def calculate_restock_alerts():
+    alerts = []
+    thirty_days_ago = timezone.now() - timezone.timedelta(days=30)
+    for variant in ProductVariant.objects.filter(is_active=True, stock__gt=0):
+        # Unidades vendidas en los últimos 30 días
+        units_sold = StockMovement.objects.filter(
+            variant=variant,
+            type="sale",
+            created_at__gte=thirty_days_ago
+        ).aggregate(total=Sum("quantity"))["total"] or 0
+        if units_sold > 0:
+            daily_avg = abs(units_sold) / 30
+            days_remaining = variant.stock / daily_avg
+            if days_remaining < 10:
+                alerts.append({
+                    "variant_id": variant.id,
+                    "product_name": variant.product.name,
+                    "size": variant.size,
+                    "color": variant.color,
+                    "current_stock": variant.stock,
+                    "days_remaining": round(days_remaining, 1),
+                })
+    return sorted(alerts, key=lambda x: x["days_remaining"])
+9.3 Exportación de Reportes
+Implementar dos endpoints de exportación usando las librerías instaladas en la Fase 1:
+Excel: usar openpyxl para crear el archivo. El endpoint retorna el archivo como response con Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.
+PDF: usar reportlab para generar el PDF. El endpoint retorna el archivo con Content-Type: application/pdf.
+Ambos endpoints aceptan los mismos filtros de fecha y tipo que la vista normal del reporte. El frontend simplemente hace un window.open(url_del_endpoint) para descargar el archivo directamente.
+  LISTA DE VALIDACIONES — ESTA FASE ESTÁ COMPLETA CUANDO:
+☐
+El endpoint /api/v1/reports/dashboard/ retorna todos los campos documentados sin errores.
+☐
+Las tarjetas KPI del dashboard muestran datos reales del día (no datos ficticios de prueba).
+☐
+La gráfica de ventas de los últimos 30 días muestra los datos correctos al pasar el cursor.
+☐
+Las alertas de stock bajo aparecen en el dashboard cuando una variante cae bajo el umbral.
+☐
+La sección de predicción muestra correctamente los días estimados de reabastecimiento.
+☐
+El botón "Crear orden de compra" en una alerta de predicción navega al formulario prellenado.
+☐
+La exportación a Excel descarga un archivo válido que se abre en Excel/LibreOffice.
+☐
+La exportación a PDF descarga un archivo válido con el logo y nombre de la tienda.
+FASE 10  Configuración y Personalización
+Construir el módulo de configuración completo y la personalización de la tienda.
+10.1 Modelo de Configuración de la Tienda
+Agregar el modelo StoreConfig a la app users (o crear una app config separada). Este modelo solo tendrá un registro en la base de datos (singleton):
+class StoreConfig(models.Model):
+    name          = models.CharField(max_length=150)
+    logo          = models.ImageField(upload_to="store/", null=True, blank=True)
+    primary_color = models.CharField(max_length=7, default="#2E86C1")
+    whatsapp      = models.CharField(max_length=20)
+    address       = models.CharField(max_length=255, blank=True)
+    schedule      = models.CharField(max_length=255, blank=True)
+    return_policy = models.TextField(blank=True)
+    banner_text   = models.CharField(max_length=300, blank=True)
+    banner_image  = models.ImageField(upload_to="store/", null=True, blank=True)
+    # Plantillas de mensajes WhatsApp por estado de pedido
+    msg_in_progress = models.TextField(default="Hola {nombre_cliente}...")
+    msg_confirmed   = models.TextField(default="...")
+    msg_preparing   = models.TextField(default="...")
+    msg_shipped     = models.TextField(default="...")
+    msg_delivered   = models.TextField(default="...")
+    msg_cancelled   = models.TextField(default="...")
+    def save(self, *args, **kwargs):
+        # Asegurar singleton: si ya existe un registro, actualizar ese
+        self.pk = 1
+        super().save(*args, **kwargs)
+    @classmethod
+    def get_config(cls):
+        obj, _ = cls.objects.get_or_create(pk=1, defaults={
+            "name": os.getenv("STORE_NAME", "Mi Tienda"),
+            "whatsapp": os.getenv("STORE_WHATSAPP", ""),
+            "primary_color": os.getenv("STORE_PRIMARY_COLOR", "#2E86C1"),
+        })
+        return obj
+10.2 Pantalla de Configuración en el Admin
+Una pantalla de formulario dividida en tabs o secciones acordeón:
+Sección "Información de la tienda": campos de nombre, logo, color, WhatsApp, dirección, horario.
+Sección "Portal de clientes": banner (texto o imagen), política de devoluciones.
+Sección "Mensajes de WhatsApp": un área de texto por cada estado de pedido, con las variables disponibles documentadas debajo de cada campo ({nombre_cliente}, {numero_pedido}, {productos}, {total}, {estado}).
+Sección "Fidelización": toggle de activación y campos de configuración de puntos (solo visibles si el toggle está ON).
+Sección "Usuarios del equipo": tabla de usuarios con botón "Nuevo usuario" y opciones de editar/desactivar por fila.
+Sección "Pasarela de pagos": campo deshabilitado con texto explicativo sobre cómo activarla.
+10.3 Aplicar color de marca en el Portal de Clientes
+El portal de clientes debe leer el color primario de la tienda desde la API y aplicarlo dinámicamente. Esto se hace con CSS Custom Properties (variables CSS):
+// En el componente raíz del portal (App.jsx):
+useEffect(() => {
+  fetch("/api/v1/store/config/")
+    .then(r => r.json())
+    .then(config => {
+      document.documentElement.style.setProperty(
+        "--color-primary", config.primary_color
+      );
+      document.title = config.name;
+    });
+}, []);
+/* En el CSS del portal, usar la variable en todos los elementos de marca: */
+.btn-primary { background-color: var(--color-primary); }
+.header     { background-color: var(--color-primary); }
+.badge      { color: var(--color-primary); border-color: var(--color-primary); }
+  LISTA DE VALIDACIONES — ESTA FASE ESTÁ COMPLETA CUANDO:
+☐
+La pantalla de configuración guarda los cambios correctamente (nombre, logo, color, WhatsApp).
+☐
+Al cambiar el color primario en configuración, el portal de clientes refleja el nuevo color al recargar.
+☐
+El logo de la tienda aparece correctamente en el header del portal y en el login del panel admin.
+☐
+Las plantillas de mensajes de WhatsApp se pueden editar y se reflejan en los botones de notificación de los pedidos.
+☐
+El toggle de fidelización activa/desactiva la sección de puntos en todo el sistema.
+☐
+Se puede crear un nuevo usuario desde configuración y ese usuario puede hacer login correctamente.
+☐
+El endpoint GET /api/v1/store/config/ es accesible públicamente (sin autenticación) y retorna solo los datos públicos (sin datos sensibles como costos o métricas).
+FASE 11  Integración, Pruebas Completas y Pulido
+Verificar que todos los módulos funcionan correctamente juntos y pulir la experiencia de usuario.
+11.1 Pruebas de integración end-to-end
+Ejecutar manualmente los siguientes flujos completos, verificando que cada paso funciona correctamente de inicio a fin:
+Flujo 1 — Ciclo de vida completo de un pedido del portal
+Abrir el portal de clientes en una ventana de incógnito (sin cookies de sesión del admin).
+Navegar al catálogo, filtrar por una categoría, abrir un producto, seleccionar talla y color, agregar al carrito.
+Verificar que el contador del carrito se actualiza en el header.
+Agregar un segundo producto al carrito.
+Abrir el carrito, verificar los totales, hacer clic en "Finalizar por WhatsApp".
+Ingresar nombre y teléfono de prueba, confirmar.
+Verificar que WhatsApp se abre con el mensaje correcto.
+Ir al Panel Admin y verificar que el pedido aparece en estado "Nuevo".
+Cambiar el estado a "Confirmado" y verificar que el botón de WhatsApp genera el mensaje correcto.
+Avanzar el pedido hasta "Entregado".
+Registrar la venta correspondiente en el módulo de Ventas.
+Verificar que el stock de las variantes vendidas bajó correctamente.
+Flujo 2 — Venta presencial con cambio posterior
+Abrir caja del día con un monto inicial de prueba.
+Registrar una venta presencial de 2 productos con pago en efectivo.
+Verificar que el stock bajó y el ingreso aparece en caja.
+Registrar un cambio para uno de los productos vendidos.
+Verificar que el stock del producto devuelto subió, el del nuevo bajó, y el ajuste de caja es correcto.
+Cerrar la caja ingresando un monto contado de prueba y verificar que la diferencia se calcula bien.
+Flujo 3 — Ciclo de inventario completo
+Crear una categoría nueva.
+Crear un producto con 3 variantes (tallas S, M, L en color Negro) con stock inicial de 5 unidades cada una.
+Activar la visibilidad en el catálogo del portal.
+Ir al portal y verificar que el producto aparece con las 3 tallas disponibles.
+Vender 4 unidades de talla S desde el panel admin.
+Verificar que en el portal la talla S muestra stock bajo (1 unidad) o "Pocas unidades".
+Vender la última unidad de talla S.
+Verificar que en el portal la talla S aparece como agotada y no es seleccionable.
+Verificar que la alerta de stock bajo aparece en el dashboard.
+11.2 Checklist de UX y pulido visual
+Revisar estos puntos en todas las pantallas del panel admin y el portal:
+Todos los formularios muestran mensajes de error claros cuando la validación falla (no solo errores de consola).
+Todos los botones de acción tienen un estado de carga (spinner) mientras la petición al backend está en curso.
+Las acciones destructivas (eliminar, cancelar pedido, cerrar caja) tienen un diálogo de confirmación antes de ejecutarse.
+Las tablas largas tienen paginación o scroll virtual para no cargar cientos de filas a la vez.
+Los mensajes de éxito (toast notifications) aparecen al completar acciones importantes.
+La aplicación muestra un estado vacío con mensaje descriptivo cuando una lista no tiene datos.
+El portal de clientes carga en menos de 3 segundos en una conexión normal (verificar en DevTools).
+No hay errores en la consola del navegador en ninguna pantalla.
+El sistema funciona correctamente en Chrome, Firefox y Safari.
+El portal de clientes es completamente funcional en móvil (probado en dispositivo real o emulador).
+  LISTA DE VALIDACIONES — ESTA FASE ESTÁ COMPLETA CUANDO:
+☐
+Los 3 flujos completos de la sección 11.1 funcionan de inicio a fin sin errores.
+☐
+No hay errores en la consola del navegador en ninguna pantalla.
+☐
+Todos los formularios muestran validaciones y mensajes de error apropiados.
+☐
+Todos los botones tienen estado de carga durante las peticiones.
+☐
+Las acciones destructivas tienen confirmación antes de ejecutarse.
+☐
+El portal funciona en un dispositivo móvil real o emulador a 375px de ancho.
+☐
+Las exportaciones de reportes a Excel y PDF generan archivos válidos.
+☐
+El sistema de predicción de reabastecimiento muestra alertas correctas.
+☐
+Los mensajes prellenados de WhatsApp contienen los datos correctos del pedido/cliente.
+☐
+El sistema de puntos se puede activar/desactivar y el comportamiento es correcto en ambos estados.
+FASE 12  Preparación para Producción y Entrega
+Configurar el sistema para producción, construir los builds de React y preparar el paquete de entrega al cliente.
+12.1 Build de producción del frontend
+En producción, Django sirve los archivos compilados de React como archivos estáticos. Esto significa un solo servidor para todo el sistema. El proceso es:
+# Paso 1: Construir ambas apps React
+cd frontend/admin && npm run build
+# Esto genera frontend/admin/dist/
+cd frontend/store && npm run build
+# Esto genera frontend/store/dist/
+# Paso 2: Copiar los builds al directorio de estáticos de Django
+# En settings.py de producción:
+STATICFILES_DIRS = [
+    BASE_DIR / "frontend/admin/dist",
+    BASE_DIR / "frontend/store/dist",
+]
+# Paso 3: Configurar Django para servir las apps React
+# En config/urls.py agregar al FINAL (después de todas las rutas API):
+from django.views.generic import TemplateView
+urlpatterns += [
+    # Portal de clientes en /tienda/
+    path("tienda/", TemplateView.as_view(template_name="store/index.html")),
+    path("tienda/<path:path>", TemplateView.as_view(template_name="store/index.html")),
+    # Panel admin en / (raíz)
+    re_path(r"^(?!api/)(?!admin/).*$", TemplateView.as_view(template_name="admin/index.html")),
+]
+12.2 Configuración de producción en settings.py
+# settings_production.py (separar del settings de desarrollo)
+from .settings import *
+DEBUG = False
+ALLOWED_HOSTS = ["tudominio.com", "www.tudominio.com"]
+# Seguridad
+SECURE_BROWSER_XSS_FILTER = True
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = "DENY"
+# CORS solo permite el dominio del cliente
+CORS_ALLOWED_ORIGINS = ["https://tudominio.com"]
+# Archivos estáticos
+STATIC_ROOT = BASE_DIR / "staticfiles"
+python manage.py collectstatic --noinput
+12.3 Checklist de entrega al cliente
+Antes de entregar el sistema a un cliente, verificar este checklist completo:
+#
+Item
+Verificado
+1
+El .env de producción tiene SECRET_KEY única y segura (no la de desarrollo)
+☐
+2
+DEBUG=False en producción
+☐
+3
+La base de datos PostgreSQL esta instalada y configurada en el servidor del cliente (produccion)
+☐
+4
+Las migraciones están aplicadas en la BD de producción
+☐
+5
+Se creó el primer usuario "Dueño" con las credenciales del cliente
+☐
+6
+El nombre, logo y WhatsApp de la tienda están configurados
+☐
+7
+El build de React fue generado con npm run build (no se usa el servidor de desarrollo Vite)
+☐
+8
+El sistema funciona correctamente con DEBUG=False
+☐
+9
+Las imágenes subidas se almacenan correctamente en el servidor
+☐
+10
+Se probó el flujo completo de pedido por WhatsApp desde un celular real
+☐
+11
+El cliente recibió la documentación de usuario (manual de uso del panel admin)
+☐
+12
+Se le explicó al cliente cómo abrir la caja todos los días
+☐
+13
+Se le explicó al cliente cómo compartir el link del portal de clientes
+☐
+12.4 Proceso de instalación para un cliente nuevo
+Cuando se vende el sistema a un cliente nuevo, el proceso de instalación sigue estos pasos exactos:
+Clonar o copiar el repositorio base a un nuevo directorio con el nombre del cliente.
+Crear la base de datos PostgreSQL nueva para este cliente en el servidor de produccion.
+Copiar .env.example a .env y completar todos los valores con los datos del cliente nuevo.
+Instalar dependencias: pip install -r requirements.txt.
+Aplicar migraciones: python manage.py migrate.
+Crear el usuario dueño: python manage.py createsuperuser.
+Hacer el build del frontend: npm run build en ambas apps React.
+Ejecutar python manage.py collectstatic.
+Iniciar el servidor y verificar que todo funciona.
+Entregar al cliente las credenciales del usuario dueño y el link al panel admin.
+  LISTA DE VALIDACIONES — ESTA FASE ESTÁ COMPLETA CUANDO:
+☐
+El sistema funciona completamente en el servidor de producción con DEBUG=False.
+☐
+El build de React está correctamente servido por Django (no hay error 404 en el frontend).
+☐
+Las rutas del portal (/tienda/) y del panel admin (/) funcionan correctamente.
+☐
+La subida de imágenes funciona en producción.
+☐
+El primer usuario Dueño puede hacer login y acceder a todas las funciones.
+☐
+El flujo completo de pedido por WhatsApp funciona desde un celular real apuntando al servidor de producción.
+☐
+El checklist de entrega de la sección 12.3 está completamente marcado.
+Resumen de Fases y Dependencias
+Este diagrama muestra el orden y las dependencias entre fases. Nunca saltar una fase. Cada flecha indica "esta fase depende de la anterior":
+Fase
+Depende de
+Permite desbloquear
+Fase 1 — Setup
+Nada (es la base)
+Todo lo demás
+Fase 2 — Modelos BD
+Fase 1
+Fase 3
+Fase 3 — API Backend
+Fase 2
+Fases 4 a 9
+Fase 4 — UI Base Admin
+Fase 3
+Fases 5 a 10
+Fase 5 — UI Inventario
+Fase 4
+Fase 6, 7, 8
+Fase 6 — UI Caja y Ventas
+Fase 5
+Fase 7
+Fase 7 — UI Pedidos y Clientes
+Fase 6
+Fase 8
+Fase 8 — Portal de Clientes
+Fase 3 (API), Fase 5 (productos visibles)
+Fase 9
+Fase 9 — Dashboard y Reportes
+Fases 5, 6, 7, 8 (necesita datos reales)
+Fase 10
+Fase 10 — Configuración
+Fase 4
+Fase 11
+Fase 11 — Integración y Pruebas
+Fases 1 a 10 completas
+Fase 12
+Fase 12 — Producción
+Fase 11 validada
+Entrega al cliente
+ FIN DE LA GUÍA DE DESARROLLO 
+LUMA STORE SYSTEM — Guía de Desarrollo v1.0 — 2025
