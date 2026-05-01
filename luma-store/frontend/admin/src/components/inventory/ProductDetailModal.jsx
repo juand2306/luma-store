@@ -221,7 +221,7 @@ function MovementHistory({ productId }) {
           {filtered.map(m => {
             const mt = MOV_LABELS[m.type] || { label: m.type, cls: 'text-luma-muted', bg: 'bg-cream-100', icon: Box }
             const Icon = mt.icon
-            const variantLabel = [m.variant_size, m.variant_color].filter(Boolean).join(' / ') || m.variant_sku || ''
+            const variantLabel = m.variant_display || ''
             return (
               <div key={m.id} className={`flex items-center gap-3 px-3 py-2.5 rounded-xl ${mt.bg}`}>
                 <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 bg-white/60`}>
@@ -237,7 +237,7 @@ function MovementHistory({ productId }) {
                   {m.note && <p className="text-[10px] text-luma-faint truncate">{m.note}</p>}
                   <p className="text-[10px] text-luma-faint">
                     {new Date(m.created_at).toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                    {m.user_name && ` · ${m.user_name}`}
+                    {m.created_by_name && ` · ${m.created_by_name}`}
                   </p>
                 </div>
                 <span className={`text-[14px] font-bold flex-shrink-0 ${m.quantity > 0 ? 'text-teal-600' : 'text-red-500'}`}>

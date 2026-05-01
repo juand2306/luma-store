@@ -40,6 +40,7 @@ function MovRow({ mov }) {
       <td className="text-[11px] text-luma-faint">
         {new Date(mov.created_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
       </td>
+      <td className="text-[11px] text-luma-muted">{mov.created_by_name || '—'}</td>
     </tr>
   )
 }
@@ -238,11 +239,12 @@ export default function Caja() {
                     <th>Medio de pago</th>
                     <th>Monto</th>
                     <th>Hora</th>
+                    <th>Usuario</th>
                   </tr>
                 </thead>
                 <tbody>
                   {session.movements?.length === 0 ? (
-                    <tr><td colSpan={4} className="text-center py-8 text-luma-faint text-[12px]">Sin movimientos aún</td></tr>
+                    <tr><td colSpan={5} className="text-center py-8 text-luma-faint text-[12px]">Sin movimientos aún</td></tr>
                   ) : (
                     session.movements?.map(m => <MovRow key={m.id} mov={m} />)
                   )}
