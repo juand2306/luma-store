@@ -117,17 +117,14 @@ class DashboardView(APIView):
         ]
 
         # ── Pedidos recientes (últimos 5) ─────────────────
-        recent_orders_qs = (
-            Order.objects.select_related("customer")
-            .order_by("-created_at")[:5]
-        )
+        recent_orders_qs = Order.objects.order_by("-created_at")[:5]
         recent_orders = [
             {
                 "id": o.id,
                 "number": o.number,
                 "status": o.status,
                 "total": float(o.total) if o.total else 0,
-                "customer_name": o.customer.name if o.customer else "Cliente anónimo",
+                "customer_name": o.customer_name or "Cliente anónimo",
             }
             for o in recent_orders_qs
         ]
