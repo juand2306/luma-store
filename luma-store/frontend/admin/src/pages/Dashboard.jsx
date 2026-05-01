@@ -5,7 +5,7 @@ import {
 } from 'recharts'
 import {
   ShoppingCart, Package, AlertTriangle,
-  CreditCard, Users, ChevronRight, X, ShoppingBag
+  CreditCard, Users, ChevronRight, ShoppingBag, TrendingUp, TrendingDown,
 } from 'lucide-react'
 import api from '../api/client'
 import { StatCard } from '../components/ui/Card'
@@ -28,12 +28,14 @@ function CustomTooltip({ active, payload, label }) {
 }
 
 // ── Mini sparkline ────────────────────────────────────────────────────────────
-function Sparkline({ data, positive = true }) {
+// uid must be unique per instance to avoid SVG gradient ID collision
+function Sparkline({ data, positive = true, uid }) {
+  const gradId = `spark-${uid}`
   return (
     <ResponsiveContainer width="100%" height={40}>
       <AreaChart data={data} margin={{ top: 4, bottom: 0, left: 0, right: 0 }}>
         <defs>
-          <linearGradient id="spark" x1="0" y1="0" x2="0" y2="1">
+          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
             <stop offset="5%"  stopColor={positive ? '#0D8585' : '#EF4444'} stopOpacity={0.15} />
             <stop offset="95%" stopColor={positive ? '#0D8585' : '#EF4444'} stopOpacity={0} />
           </linearGradient>
@@ -43,7 +45,7 @@ function Sparkline({ data, positive = true }) {
           dataKey="total"
           stroke={positive ? '#0D8585' : '#EF4444'}
           strokeWidth={1.5}
-          fill="url(#spark)"
+          fill={`url(#${gradId})`}
           dot={false}
         />
       </AreaChart>
@@ -84,23 +86,19 @@ function StockAlertsPanel({ alerts, navigate }) {
             <button
               key={a.variant_id}
               className="w-full flex items-center gap-3 px-4 py-3 hover:bg-cream-50 transition-colors text-left"
-              onClick={() => navigate('/inventario')}
+              onClick={() => navigate('/inventario', { state: { openProductId: a.product_id } })}
             >
-              {/* Urgency dot */}
               <div className={`w-2 h-8 rounded-full flex-shrink-0 ${ug.dot}`} />
-              {/* Info */}
               <div className="flex-1 min-w-0">
                 <p className="text-[12px] font-semibold text-luma-text truncate">{a.product_name}</p>
                 <p className="text-[10px] text-luma-faint">
                   T: {a.size || '—'} · {a.color || '—'}
                 </p>
               </div>
-              {/* Stock numbers */}
               <div className="text-right flex-shrink-0 mr-2">
                 <p className="text-[12px] font-bold text-luma-text">{a.current_stock} ud.</p>
                 <p className="text-[10px] text-luma-faint">Mín: {a.min_stock}</p>
               </div>
-              {/* Badge */}
               <span className={`text-[9px] font-bold px-2 py-0.5 rounded-lg flex-shrink-0 ${ug.badge}`}>
                 {ug.label}
               </span>
@@ -157,8 +155,6 @@ function PurchaseOrderModal({ product, onClose }) {
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    // In the future this will POST to /api/purchase-orders/
-    // For now we show success feedback as the module is not yet built
     alert(`Orden de compra creada:\n• Producto: ${product.product_name}\n• Variante: T:${product.size} / ${product.color}\n• Cantidad solicitada: ${qty}\n• Nota: ${note || '—'}\n\nEsta función se conectará al módulo de compras cuando esté disponible.`)
     onClose()
   }
@@ -206,13 +202,26 @@ function PurchaseOrderModal({ product, onClose }) {
   )
 }
 
+// ── % change indicator ────────────────────────────────────────────────────────
+function ChangeIndicator({ value }) {
+  if (value === null || value === undefined) return null
+  const positive = value >= 0
+  const Icon = positive ? TrendingUp : TrendingDown
+  return (
+    <span className={`flex items-center gap-0.5 text-xs font-semibold ${positive ? 'text-green-500' : 'text-red-500'}`}>
+      <Icon size={12} />
+      {positive ? '+' : ''}{value}%
+    </span>
+  )
+}
+
 // ── Main Dashboard ────────────────────────────────────────────────────────────
 export default function Dashboard() {
   const navigate = useNavigate()
   const [data, setData]       = useState(null)
   const [loading, setLoading] = useState(true)
   const [view, setView]       = useState('monthly') // weekly | monthly
-  const [purchaseOrder, setPurchaseOrder] = useState(null) // restock item to order
+  const [purchaseOrder, setPurchaseOrder] = useState(null)
 
   useEffect(() => {
     api.get('/reports/dashboard/')
@@ -235,7 +244,6 @@ export default function Dashboard() {
   const lastWeek = chart.slice(-7)
   const chartData = view === 'monthly' ? chart : lastWeek
 
-  // Format chart labels
   const chartFormatted = chartData.map((d) => ({
     ...d,
     label: new Date(d.date).toLocaleDateString('es-CO', {
@@ -243,11 +251,11 @@ export default function Dashboard() {
     })
   }))
 
-  const spark = chart.slice(-14)
+  const salesSpark   = chart.slice(-14)
+  const ordersSpark  = (data?.orders_chart || []).slice(-14)
 
   return (
     <div className="space-y-5 animate-fade-up">
-      {/* Performance overview label */}
       <p className="section-label">Resumen del día</p>
 
       {/* ── KPI Cards ─────────────────────────────────────────── */}
@@ -257,24 +265,25 @@ export default function Dashboard() {
           value={`$${Number(data?.today_revenue || 0).toLocaleString('es-CO')}`}
           sub={`${data?.today_sales_count || 0} transacciones`}
           icon={ShoppingCart}
-          change={data?.today_sales_count > 0 ? 12.5 : 0}
-          chart={<Sparkline data={spark} />}
+          change={data?.revenue_change}
+          chart={salesSpark.length > 0 ? <Sparkline data={salesSpark} uid="sales" /> : null}
         />
         <StatCard
           label="Pedidos nuevos"
           value={data?.new_orders || 0}
           sub="Pendientes por atender"
           icon={Package}
-          change={data?.new_orders > 0 ? 4.2 : 0}
-          chart={<Sparkline data={spark.map(d => ({ ...d, total: d.total * 0.1 }))} />}
+          change={data?.new_orders > 0 && data?.yesterday_new_orders > 0
+            ? Math.round(((data.new_orders - data.yesterday_new_orders) / data.yesterday_new_orders) * 100)
+            : null}
+          chart={ordersSpark.length > 0 ? <Sparkline data={ordersSpark} uid="orders" /> : null}
         />
         <StatCard
           label="Bajo/Agotado"
           value={data?.out_of_stock_count || 0}
           sub={`${data?.low_stock_count || 0} variantes en mínimo`}
           icon={AlertTriangle}
-          change={data?.out_of_stock_count > 0 ? -0.8 : 0}
-          chart={<Sparkline data={spark} positive={false} />}
+          change={null}
         />
       </div>
 
@@ -370,19 +379,13 @@ export default function Dashboard() {
                 tickFormatter={(v) => `$${(v/1000).toFixed(0)}k`}
               />
               <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(13,133,133,0.06)', radius: 4 }} />
-              <Bar
-                dataKey="total"
-                fill="#0D8585"
-                radius={[4, 4, 0, 0]}
-                maxBarSize={40}
-              />
+              <Bar dataKey="total" fill="#0D8585" radius={[4, 4, 0, 0]} maxBarSize={40} />
             </BarChart>
           </ResponsiveContainer>
         </div>
 
         {/* Right column: alerts + orders */}
         <div className="space-y-4">
-          {/* 5.4 Alertas de Stock — panel completo */}
           {data?.stock_alerts?.length > 0 && (
             <StockAlertsPanel alerts={data.stock_alerts} navigate={navigate} />
           )}
@@ -394,7 +397,7 @@ export default function Dashboard() {
                 Ver todos <ChevronRight size={12} />
               </Link>
             </div>
-            <LiveOrders orders={[]} />
+            <LiveOrders orders={data?.recent_orders || []} />
           </div>
         </div>
       </div>
@@ -449,16 +452,31 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ── 5.5 Predicción de Reabastecimiento ───────────────── */}
-      {data?.restock_alerts?.length > 0 && (
-        <div className="card p-5">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h3 className="text-[14px] font-semibold text-luma-text">Predicción de Reabastecimiento</h3>
-              <p className="text-[11px] text-luma-muted mt-0.5">Variantes con menos de 10 días de stock estimado según ritmo de ventas</p>
-            </div>
-            <Badge variant="amber" dot>⚠ Atención</Badge>
+      {/* ── 5.5 Predicción de Reabastecimiento — siempre visible ─ */}
+      <div className="card p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-[14px] font-semibold text-luma-text">Predicción de Reabastecimiento</h3>
+            <p className="text-[11px] text-luma-muted mt-0.5">
+              Variantes con menos de 10 días de stock estimado según ritmo de ventas
+            </p>
           </div>
+          {data?.restock_alerts?.length > 0 && (
+            <Badge variant="amber" dot>⚠ Atención</Badge>
+          )}
+        </div>
+
+        {!data?.restock_alerts?.length ? (
+          <div className="py-6 text-center">
+            <div className="w-10 h-10 bg-teal-50 rounded-xl flex items-center justify-center mx-auto mb-3">
+              <Package size={18} className="text-teal-400" />
+            </div>
+            <p className="text-[13px] font-medium text-luma-text">Todo bajo control</p>
+            <p className="text-[12px] text-luma-faint mt-0.5">
+              Ninguna variante necesita reabastecimiento en los próximos 10 días.
+            </p>
+          </div>
+        ) : (
           <div className="space-y-3">
             {data.restock_alerts.slice(0, 5).map((a) => (
               <div key={a.variant_id} className="flex items-center gap-4 p-3 rounded-xl hover:bg-cream-50 transition-colors">
@@ -479,15 +497,14 @@ export default function Dashboard() {
                   className="flex-shrink-0 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-[11px] font-semibold transition-colors flex items-center gap-1.5"
                 >
                   <ShoppingBag size={11} />
-                  Crear orden de compra
+                  Crear orden
                 </button>
               </div>
             ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* Purchase Order Modal */}
       {purchaseOrder && (
         <PurchaseOrderModal product={purchaseOrder} onClose={() => setPurchaseOrder(null)} />
       )}

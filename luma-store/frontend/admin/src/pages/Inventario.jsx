@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useLocation } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import {
   Plus, Search, Filter, RefreshCw,
@@ -136,6 +137,8 @@ function ProductRow({ product, categories, onView, onEdit, onVariants, onMovemen
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function Inventario() {
+  const location = useLocation()
+
   const [products,   setProducts]   = useState([])
   const [categories, setCategories] = useState([])
   const [loading,    setLoading]    = useState(true)
@@ -155,6 +158,16 @@ export default function Inventario() {
   const [showCatModal,     setShowCatModal]      = useState(false)
   const [showCsvModal,     setShowCsvModal]      = useState(false)
   const [activeTab,        setActiveTab]         = useState('catalog') // catalog | alerts | prediction
+
+  // Auto-open product detail when navigating from Dashboard stock alerts
+  useEffect(() => {
+    const openId = location.state?.openProductId
+    if (!openId) return
+    window.history.replaceState({}, '')
+    svc.getProduct(openId)
+      .then(({ data }) => setDetailProduct(data))
+      .catch(() => {})
+  }, [location.state?.openProductId])
 
   // KPIs
   const totalValue   = products.reduce((s, p) => s + p.total_stock * Number(p.price), 0)

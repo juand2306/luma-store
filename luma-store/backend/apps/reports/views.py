@@ -19,7 +19,9 @@ class DashboardView(APIView):
     permission_classes = [CanViewOnly]
 
     def get(self, request):
+        from datetime import date, timedelta
         today = timezone.now().date()
+        yesterday = today - timedelta(days=1)
         now = timezone.now()
 
         # ── Ventas del día ────────────────────────────────
@@ -27,8 +29,15 @@ class DashboardView(APIView):
         today_revenue = today_sales.aggregate(t=Sum("total"))["t"] or 0
         today_count = today_sales.count()
 
+        yesterday_sales = Sale.objects.filter(created_at__date=yesterday)
+        yesterday_revenue = float(yesterday_sales.aggregate(t=Sum("total"))["t"] or 0)
+        yesterday_count = yesterday_sales.count()
+
         # ── Pedidos nuevos ───────────────────────────────
         new_orders = Order.objects.filter(status="new").count()
+        yesterday_new_orders = Order.objects.filter(
+            status="new", created_at__date=yesterday
+        ).count()
 
         # ── Stock bajo / agotado ──────────────────────────
         low_stock_count = ProductVariant.objects.filter(
@@ -53,7 +62,6 @@ class DashboardView(APIView):
             }
 
         # ── Gráfica de ventas — últimos 30 días ──────────
-        from datetime import date, timedelta
         sales_chart = []
         for i in range(29, -1, -1):
             day = today - timedelta(days=i)
@@ -61,6 +69,13 @@ class DashboardView(APIView):
                 created_at__date=day
             ).aggregate(t=Sum("total"))["t"] or 0
             sales_chart.append({"date": str(day), "total": float(day_total)})
+
+        # ── Gráfica de pedidos — últimos 14 días ─────────
+        orders_chart = []
+        for i in range(13, -1, -1):
+            day = today - timedelta(days=i)
+            day_count = Order.objects.filter(created_at__date=day).count()
+            orders_chart.append({"date": str(day), "total": day_count})
 
         # ── Top 5 productos más vendidos (últimos 30 días) ─────
         thirty_days_ago = now - timezone.timedelta(days=30)
@@ -90,6 +105,7 @@ class DashboardView(APIView):
         stock_alerts = [
             {
                 "variant_id": v.id,
+                "product_id": v.product.id,
                 "product_name": v.product.name,
                 "size": v.size,
                 "color": v.color,
@@ -100,19 +116,48 @@ class DashboardView(APIView):
             for v in low_stock_variants
         ]
 
+        # ── Pedidos recientes (últimos 5) ─────────────────
+        recent_orders_qs = (
+            Order.objects.select_related("customer")
+            .order_by("-created_at")[:5]
+        )
+        recent_orders = [
+            {
+                "id": o.id,
+                "number": o.number,
+                "status": o.status,
+                "total": float(o.total) if o.total else 0,
+                "customer_name": o.customer.name if o.customer else "Cliente anónimo",
+            }
+            for o in recent_orders_qs
+        ]
+
         # ── Predicción de reabastecimiento ────────────────
         restock_alerts = _calculate_restock_alerts(thirty_days_ago)
+
+        # ── % cambio vs ayer ──────────────────────────────
+        def pct_change(today_val, yesterday_val):
+            if yesterday_val == 0:
+                return None
+            return round(((today_val - yesterday_val) / yesterday_val) * 100, 1)
 
         return Response({
             "today_revenue": float(today_revenue),
             "today_sales_count": today_count,
+            "yesterday_revenue": yesterday_revenue,
+            "yesterday_sales_count": yesterday_count,
+            "revenue_change": pct_change(float(today_revenue), yesterday_revenue),
+            "sales_count_change": pct_change(today_count, yesterday_count),
             "new_orders": new_orders,
+            "yesterday_new_orders": yesterday_new_orders,
             "low_stock_count": low_stock_count,
             "out_of_stock_count": out_of_stock_count,
             "cash_session": cash_data,
             "sales_chart": sales_chart,
+            "orders_chart": orders_chart,
             "top_products": top_products_list,
             "stock_alerts": stock_alerts,
+            "recent_orders": recent_orders,
             "restock_alerts": restock_alerts,
         })
 
