@@ -13,6 +13,7 @@ import Clientes from './pages/Clientes'
 import Reportes from './pages/Reportes'
 import Configuracion from './pages/Configuracion'
 import VentaRapida from './pages/VentaRapida'
+import Perfil from './pages/Perfil'
 import { PageLoader } from './components/ui/Misc'
 
 // Protect routes from unauthenticated users
@@ -62,6 +63,7 @@ function AppRoutes() {
         <Route path="/clientes"        element={<RoleRoute allow={['owner','admin']}><Clientes /></RoleRoute>} />
         <Route path="/reportes"        element={<Reportes />} />
         <Route path="/configuracion"   element={<RoleRoute allow={['owner']}><Configuracion /></RoleRoute>} />
+        <Route path="/perfil"          element={<Perfil />} />
       </Route>
 
       {/* Catch all */}

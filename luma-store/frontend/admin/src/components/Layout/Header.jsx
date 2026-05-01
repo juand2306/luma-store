@@ -1,6 +1,10 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
-import { Search, Bell, Menu, X, Calendar, ShoppingBag, Package, Users, CheckCircle } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+import {
+  Search, Bell, Menu, X, Calendar, ShoppingBag, Package,
+  Users, CheckCircle, LogOut, User, ChevronDown,
+} from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { useAuth } from '../../store/authContext'
 import * as svc from '../../api/services'
 
 const PAGE_TITLES = {
@@ -13,6 +17,14 @@ const PAGE_TITLES = {
   '/clientes':        'Clientes',
   '/reportes':        'Reportes',
   '/configuracion':   'Configuracion',
+  '/perfil':          'Mi perfil',
+}
+
+const ROLE_LABELS = {
+  owner:  'Propietario',
+  admin:  'Administrador',
+  seller: 'Vendedor',
+  viewer: 'Visualizador',
 }
 
 function formatDate() {
@@ -36,7 +48,6 @@ function NotificationPanel({ onClose }) {
       const ords = oRes.data?.results ?? oRes.data ?? []
       const prods = pRes.data?.results ?? pRes.data ?? []
       setOrders(Array.isArray(ords) ? ords.slice(0, 5) : [])
-      // Alertas de stock bajo
       const stockAlerts = prods.filter(p => (p.total_stock ?? 0) <= (p.min_stock ?? 3) && p.status !== 'inactive')
       setAlerts(stockAlerts.slice(0, 5))
     }).finally(() => setLoading(false))
@@ -213,12 +224,67 @@ function GlobalSearch({ onClose }) {
   )
 }
 
+// ── User dropdown menu ────────────────────────────────────────────────────────
+function UserMenu({ user, onClose, onLogout }) {
+  const navigate = useNavigate()
+
+  const initials = user?.first_name
+    ? `${user.first_name[0]}${user.last_name?.[0] || ''}`.toUpperCase()
+    : user?.username?.[0]?.toUpperCase() || 'U'
+
+  const displayName = user?.first_name
+    ? `${user.first_name} ${user.last_name || ''}`.trim()
+    : user?.username
+
+  return (
+    <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-2xl shadow-card-md border border-luma-border z-50 overflow-hidden animate-scale-in">
+      {/* User info */}
+      <div className="px-4 py-3 border-b border-luma-border">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 gradient-teal rounded-xl flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
+            {initials}
+          </div>
+          <div className="min-w-0">
+            <p className="text-[13px] font-semibold text-luma-text truncate leading-tight">{displayName}</p>
+            <p className="text-[11px] text-luma-faint mt-0.5 capitalize">{ROLE_LABELS[user?.role] || user?.role}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="p-1.5 space-y-0.5">
+        <button
+          onClick={() => { navigate('/perfil'); onClose() }}
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-cream-100 transition-colors text-left"
+        >
+          <User size={14} className="text-luma-faint flex-shrink-0" />
+          <span className="text-[13px] text-luma-text">Mi perfil</span>
+        </button>
+        <button
+          onClick={() => { onClose(); onLogout() }}
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-red-50 transition-colors text-left"
+        >
+          <LogOut size={14} className="text-red-400 flex-shrink-0" />
+          <span className="text-[13px] text-red-500">Cerrar sesión</span>
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── Main Header ───────────────────────────────────────────────────────────────
 export default function Header({ onMenuToggle, mobileOpen }) {
   const location  = useLocation()
   const title     = PAGE_TITLES[location.pathname] || 'LUMA'
-  const [panel,   setPanel]   = useState(null)   // null | 'search' | 'bell'
+  const { user, logout } = useAuth()
+  const [panel,   setPanel]   = useState(null)   // null | 'search' | 'bell' | 'user'
   const panelRef  = useRef(null)
+
+  const initials = user?.first_name
+    ? `${user.first_name[0]}${user.last_name?.[0] || ''}`.toUpperCase()
+    : user?.username?.[0]?.toUpperCase() || 'U'
+
+  const shortName = user?.first_name || user?.username || ''
 
   // Cerrar panel al hacer clic fuera
   useEffect(() => {
@@ -287,6 +353,32 @@ export default function Header({ onMenuToggle, mobileOpen }) {
             <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-teal-500 rounded-full" />
           </button>
           {panel === 'bell' && <NotificationPanel onClose={() => setPanel(null)} />}
+        </div>
+
+        {/* User */}
+        <div className="relative ml-1">
+          <button
+            onClick={() => setPanel(panel === 'user' ? null : 'user')}
+            className={`flex items-center gap-2 pl-1.5 pr-2 py-1.5 rounded-xl transition-colors ${
+              panel === 'user'
+                ? 'bg-teal-50'
+                : 'hover:bg-cream-200'
+            }`}
+          >
+            <div className="w-7 h-7 gradient-teal rounded-lg flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+              {initials}
+            </div>
+            <div className="hidden md:block text-left">
+              <p className="text-[12px] font-semibold text-luma-text leading-none">{shortName}</p>
+              <p className="text-[10px] text-luma-faint capitalize mt-0.5 leading-none">
+                {ROLE_LABELS[user?.role] || user?.role}
+              </p>
+            </div>
+            <ChevronDown size={12} className={`hidden md:block text-luma-faint transition-transform ${panel === 'user' ? 'rotate-180' : ''}`} />
+          </button>
+          {panel === 'user' && (
+            <UserMenu user={user} onClose={() => setPanel(null)} onLogout={logout} />
+          )}
         </div>
       </div>
     </header>

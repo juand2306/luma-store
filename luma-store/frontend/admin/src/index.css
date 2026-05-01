@@ -230,13 +230,13 @@ h1,h2,h3,h4,h5,h6 { font-family: "Inter", sans-serif; font-weight: 600; line-hei
   :root { --sidebar-w: 0px; }
 
   .sidebar {
+    width: 240px; /* explicit width so translateX(-100%) = -240px */
     transform: translateX(-100%);
     box-shadow: 4px 0 24px rgba(0,0,0,0.1);
   }
 
   .sidebar.mobile-open {
     transform: translateX(0);
-    width: 240px;
   }
 
   .main-content {
