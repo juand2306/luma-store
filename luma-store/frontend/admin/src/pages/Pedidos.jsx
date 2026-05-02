@@ -160,6 +160,17 @@ function OrderCard({ order, onView }) {
 }
 
 // ── Página principal ──────────────────────────────────────────────────────────
+// Mapa: estado del pedido → campo de plantilla en StoreConfig
+const STATUS_TEMPLATE_KEY = {
+  new:         'msg_in_progress',
+  in_progress: 'msg_in_progress',
+  confirmed:   'msg_confirmed',
+  preparing:   'msg_preparing',
+  shipped:     'msg_shipped',
+  delivered:   'msg_delivered',
+  cancelled:   'msg_cancelled',
+}
+
 export default function Pedidos() {
   const [orders,         setOrders]         = useState([])
   const [loading,        setLoading]        = useState(true)
@@ -168,6 +179,7 @@ export default function Pedidos() {
   const [newStatus,      setNewStatus]      = useState('')
   const [saving,         setSaving]         = useState(false)
   const [showDelivery,   setShowDelivery]   = useState(false) // mini-modal de confirmación
+  const [storeConfig,    setStoreConfig]    = useState(null)
 
   const prevCountRef = useRef(0)
 
@@ -185,6 +197,13 @@ export default function Pedidos() {
     } catch { if (!silent) toast.error('Error cargando pedidos') }
     finally { if (!silent) setLoading(false) }
   }, [filter])
+
+  // Cargar config de tienda una sola vez (para las plantillas de WhatsApp)
+  useEffect(() => {
+    svc.getStoreConfig()
+      .then(({ data }) => setStoreConfig(data))
+      .catch(() => {}) // Si falla, se usa el mensaje por defecto
+  }, [])
 
   useEffect(() => { load() }, [load])
   useEffect(() => {
@@ -319,7 +338,13 @@ export default function Pedidos() {
             <div className="flex items-center gap-2 flex-wrap justify-end w-full">
               {detail.customer_phone && (
                 <a
-                  href={buildWhatsAppUrl(detail.customer_phone, buildOrderMessage(detail))}
+                  href={buildWhatsAppUrl(
+                    detail.customer_phone,
+                    buildOrderMessage(
+                      detail,
+                      storeConfig?.[STATUS_TEMPLATE_KEY[detail.status]] || null
+                    )
+                  )}
                   target="_blank" rel="noopener noreferrer"
                   className="flex items-center gap-1.5 px-3 py-2 bg-green-500 hover:bg-green-600 text-white text-[12px] font-semibold rounded-xl transition-colors"
                 >

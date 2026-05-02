@@ -31,11 +31,11 @@ export function buildOrderMessage(order, template = null) {
 
   if (template) {
     return template
-      .replace('{nombre_cliente}', order.customer_name || 'Cliente')
-      .replace('{numero_pedido}',  order.number)
-      .replace('{productos}',      productLines)
-      .replace('{total}',          `$${Number(order.total).toLocaleString('es-CO')}`)
-      .replace('{estado}',         order.status_display || order.status || '')
+      .replaceAll('{nombre_cliente}', order.customer_name || 'Cliente')
+      .replaceAll('{numero_pedido}',  order.number || '')
+      .replaceAll('{productos}',      productLines)
+      .replaceAll('{total}',          `$${Number(order.total || 0).toLocaleString('es-CO')}`)
+      .replaceAll('{estado}',         order.status_display || order.status || '')
   }
 
   return `✅ *Actualización de tu pedido — ${order.number}*
