@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import toast from 'react-hot-toast'
 import {
   CreditCard, Plus, Lock, Unlock, ArrowUpCircle, ArrowDownCircle,
-  TrendingUp, TrendingDown, RefreshCw, ChevronDown, AlertCircle
+  RefreshCw, AlertCircle, ChevronDown, X
 } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import { Input, Select } from '../components/ui/Input'
@@ -45,15 +45,154 @@ function MovRow({ mov }) {
   )
 }
 
+// ── History detail modal ──────────────────────────────────────────────────────
+function HistoryDetailModal({ open, onClose, sessionId }) {
+  const [detail,  setDetail]  = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (open && sessionId) {
+      setLoading(true)
+      svc.getSession(sessionId)
+        .then(({ data }) => setDetail(data))
+        .catch(() => toast.error('Error cargando detalle'))
+        .finally(() => setLoading(false))
+    } else {
+      setDetail(null)
+    }
+  }, [open, sessionId])
+
+  const dateLabel = detail
+    ? new Date(detail.date + 'T00:00:00').toLocaleDateString('es-CO', {
+        weekday: 'long', day: '2-digit', month: 'long', year: 'numeric'
+      })
+    : ''
+
+  return (
+    <Modal open={open} onClose={onClose} title={`Detalle de cierre — ${dateLabel}`} size="lg">
+      {loading ? (
+        <div className="flex justify-center py-12">
+          <RefreshCw size={22} className="animate-spin text-luma-faint" />
+        </div>
+      ) : detail ? (
+        <div className="space-y-5">
+
+          {/* Session info row */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 bg-cream-100 rounded-xl">
+            {[
+              { label: 'Abierta por',  value: detail.opened_by_name || '—',
+                sub: detail.opened_at ? new Date(detail.opened_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : null },
+              { label: 'Cerrada por',  value: detail.closed_by_name || '—',
+                sub: detail.closed_at ? new Date(detail.closed_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : null },
+              { label: 'Monto apertura', value: fmt(detail.opening_amount), sub: null },
+              { label: 'Estado',         value: null, badge: detail.status },
+            ].map(item => (
+              <div key={item.label}>
+                <p className="section-label mb-0.5">{item.label}</p>
+                {item.badge
+                  ? <StatusBadge status={item.badge} />
+                  : <p className="text-[13px] font-semibold text-luma-text">{item.value}</p>
+                }
+                {item.sub && <p className="text-[11px] text-luma-faint">{item.sub}</p>}
+              </div>
+            ))}
+          </div>
+
+          {/* KPI cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              { label: 'Total ingresos', value: fmt(detail.total_income),  color: 'text-teal-600' },
+              { label: 'Total egresos',  value: fmt(detail.total_expense), color: 'text-red-500' },
+              { label: 'Devoluciones',   value: fmt(detail.total_refund),  color: 'text-amber-600' },
+              { label: 'Saldo final',    value: fmt(detail.current_cash),  color: 'text-luma-text' },
+            ].map(k => (
+              <div key={k.label} className="card p-3">
+                <p className="section-label">{k.label}</p>
+                <p className={`text-[17px] font-bold mt-1 ${k.color}`}>{k.value}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Difference banner */}
+          <div className={`p-3 rounded-xl flex items-start gap-3 border-l-4 ${
+            Math.abs(Number(detail.difference)) < 1
+              ? 'border-teal-500 bg-teal-50'
+              : Number(detail.difference) > 0
+              ? 'border-green-500 bg-green-50'
+              : 'border-amber-500 bg-amber-50'
+          }`}>
+            <AlertCircle size={15} className={`mt-0.5 flex-shrink-0 ${
+              Math.abs(Number(detail.difference)) < 1 ? 'text-teal-500'
+              : Number(detail.difference) > 0 ? 'text-green-500' : 'text-amber-500'
+            }`} />
+            <div>
+              <p className="text-[12px] font-semibold text-luma-text">
+                Esperado: {fmt(detail.closing_amount)} &nbsp;·&nbsp;
+                Contado: {fmt(detail.counted_amount)} &nbsp;·&nbsp;
+                Diferencia:&nbsp;
+                <span className={
+                  Math.abs(Number(detail.difference)) < 1 ? 'text-teal-600'
+                  : Number(detail.difference) > 0 ? 'text-green-600' : 'text-red-500'
+                }>
+                  {fmt(Math.abs(detail.difference))}
+                  {Number(detail.difference) > 0 ? ' (sobrante)' : Number(detail.difference) < 0 ? ' (faltante)' : ' ✓'}
+                </span>
+              </p>
+              {detail.note && (
+                <p className="text-[11px] text-luma-muted mt-0.5">📝 {detail.note}</p>
+              )}
+            </div>
+          </div>
+
+          {/* Movements */}
+          <div>
+            <p className="text-[13px] font-semibold text-luma-text mb-3">
+              Movimientos
+              <span className="ml-2 text-[11px] text-luma-faint font-normal">
+                ({detail.movements?.length || 0} registros)
+              </span>
+            </p>
+            {!detail.movements?.length ? (
+              <p className="text-center text-luma-faint py-6 text-[12px]">Sin movimientos registrados</p>
+            ) : (
+              <div className="overflow-x-auto max-h-72 overflow-y-auto rounded-xl border border-luma-border">
+                <table className="luma-table">
+                  <thead>
+                    <tr>
+                      <th>Descripción</th>
+                      <th>Medio de pago</th>
+                      <th>Monto</th>
+                      <th>Hora</th>
+                      <th>Usuario</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detail.movements.map(m => <MovRow key={m.id} mov={m} />)}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+        </div>
+      ) : null}
+    </Modal>
+  )
+}
+
 export default function Caja() {
   const [session,  setSession]  = useState(null)
   const [loading,  setLoading]  = useState(true)
   const [history,  setHistory]  = useState([])
 
   // Modals
-  const [openModal,    setOpenModal]    = useState(false)
-  const [closeModal,   setCloseModal]   = useState(false)
-  const [movModal,     setMovModal]     = useState(false)
+  const [openModal,      setOpenModal]      = useState(false)
+  const [closeModal,     setCloseModal]     = useState(false)
+  const [movModal,       setMovModal]       = useState(false)
+  const [histDetailId,   setHistDetailId]   = useState(null)   // id of session to show in detail modal
+
+  // History pagination
+  const [showAllHistory, setShowAllHistory] = useState(false)
 
   // Open session form
   const [openAmount, setOpenAmount] = useState('')
@@ -79,9 +218,9 @@ export default function Caja() {
       } else {
         setSession(null)
       }
-      // History (last 10 sessions)
+      // History — fetch last 30 closed sessions
       const { data: hist } = await svc.getSessions({ status: 'closed' })
-      setHistory((hist?.results ?? hist ?? []).slice(0, 10))
+      setHistory(hist?.results ?? hist ?? [])
     } catch { toast.error('Error cargando caja') }
     finally { setLoading(false) }
   }, [])
@@ -258,8 +397,9 @@ export default function Caja() {
       {/* History */}
       {history.length > 0 && (
         <div className="card overflow-hidden">
-          <div className="px-5 py-4 border-b border-luma-border">
+          <div className="px-5 py-4 border-b border-luma-border flex items-center justify-between">
             <h3 className="text-[14px] font-semibold text-luma-text">Historial de cierres</h3>
+            <span className="text-[11px] text-luma-faint">{history.length} cierre{history.length !== 1 ? 's' : ''} · Haz clic en una fila para ver el detalle</span>
           </div>
           <div className="overflow-x-auto">
             <table className="luma-table">
@@ -270,14 +410,20 @@ export default function Caja() {
                   <th>Contado</th>
                   <th>Esperado</th>
                   <th>Diferencia</th>
-                  <th>Apertura por</th>
+                  <th>Abierta por</th>
+                  <th>Cerrada por</th>
                   <th>Nota de cierre</th>
                   <th>Estado</th>
                 </tr>
               </thead>
               <tbody>
-                {history.map(h => (
-                  <tr key={h.id}>
+                {(showAllHistory ? history : history.slice(0, 10)).map(h => (
+                  <tr
+                    key={h.id}
+                    className="cursor-pointer hover:bg-cream-100 transition-colors"
+                    onClick={() => setHistDetailId(h.id)}
+                    title="Ver detalle"
+                  >
                     <td className="font-medium">
                       <p>{new Date(h.date + 'T00:00:00').toLocaleDateString('es-CO', { weekday: 'short', day: '2-digit', month: 'short' })}</p>
                       {h.closed_at && (
@@ -289,13 +435,17 @@ export default function Caja() {
                     <td>{fmt(h.opening_amount)}</td>
                     <td>{h.counted_amount ? fmt(h.counted_amount) : <span className="text-luma-faint">—</span>}</td>
                     <td>{fmt(h.closing_amount)}</td>
-                    <td className={Number(h.difference) === 0 ? 'text-teal-600 font-semibold' : Number(h.difference) > 0 ? 'text-green-600 font-semibold' : 'text-red-500 font-semibold'}>
+                    <td className={
+                      Math.abs(Number(h.difference)) < 1 ? 'text-teal-600 font-semibold'
+                      : Number(h.difference) > 0 ? 'text-green-600 font-semibold' : 'text-red-500 font-semibold'
+                    }>
                       {Number(h.difference) > 0 ? '+' : ''}{fmt(h.difference)}
                       <span className="text-[10px] ml-1 font-normal">
-                        {Number(h.difference) > 0 ? '(sobrante)' : Number(h.difference) < 0 ? '(faltante)' : '(cuadrado)'}
+                        {Math.abs(Number(h.difference)) < 1 ? '(cuadrado)' : Number(h.difference) > 0 ? '(sobrante)' : '(faltante)'}
                       </span>
                     </td>
                     <td className="text-[11px] text-luma-muted">{h.opened_by_name || '—'}</td>
+                    <td className="text-[11px] text-luma-muted">{h.closed_by_name || '—'}</td>
                     <td className="text-[11px] text-luma-muted max-w-[140px] truncate" title={h.note}>
                       {h.note || <span className="text-luma-faint">—</span>}
                     </td>
@@ -305,8 +455,27 @@ export default function Caja() {
               </tbody>
             </table>
           </div>
+          {/* Ver más / Ver menos */}
+          {history.length > 10 && (
+            <div className="px-5 py-3 border-t border-luma-border flex justify-center">
+              <button
+                onClick={() => setShowAllHistory(p => !p)}
+                className="text-[12px] text-teal-600 font-semibold hover:underline flex items-center gap-1"
+              >
+                <ChevronDown size={14} className={`transition-transform ${showAllHistory ? 'rotate-180' : ''}`} />
+                {showAllHistory ? 'Ver menos' : `Ver todos (${history.length})`}
+              </button>
+            </div>
+          )}
         </div>
       )}
+
+      {/* ── History detail modal ── */}
+      <HistoryDetailModal
+        open={!!histDetailId}
+        onClose={() => setHistDetailId(null)}
+        sessionId={histDetailId}
+      />
 
       {/* ── Open modal ── */}
       <Modal open={openModal} onClose={() => setOpenModal(false)} title="Abrir caja" size="sm"
