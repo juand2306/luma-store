@@ -48,7 +48,6 @@ function SaleRow({ sale, onView }) {
 function VariantSearch({ query, onQueryChange, results, onSelect, selected, onClear, placeholder }) {
   return (
     <div className="relative">
-      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-luma-faint pointer-events-none" />
       {selected ? (
         <div className="flex items-center gap-2 px-3 py-2.5 bg-teal-50 border border-teal-200 rounded-xl">
           <div className="flex-1">
@@ -62,9 +61,9 @@ function VariantSearch({ query, onQueryChange, results, onSelect, selected, onCl
         </div>
       ) : (
         <>
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-luma-faint pointer-events-none z-10" />
           <input
-            className="input-base"
-            style={{ paddingLeft: '2.25rem' }}
+            className="input-base !pl-9"
             placeholder={placeholder}
             value={query}
             onChange={e => onQueryChange(e.target.value)}
@@ -134,6 +133,7 @@ function ReturnModal({ onSaved, onClose }) {
   const handleSubmit = async () => {
     if (!retVariant)                    { toast.error('Selecciona el producto a devolver'); return }
     if (!retPrice)                      { toast.error('Ingresa el precio de devolución'); return }
+    if (!reason)                        { toast.error('Selecciona la razón de la devolución'); return }
     if (type === 'swap' && !swpVariant) { toast.error('Selecciona el producto de reemplazo'); return }
     setSaving(true)
     try {
@@ -254,10 +254,15 @@ function ReturnModal({ onSaved, onClose }) {
         {/* Razón */}
         <div>
           <label className="text-[12px] font-semibold text-luma-text mb-1.5 block">
-            Razón <span className="text-luma-faint font-normal">(opcional)</span>
+            Razón <span className="text-red-400">*</span>
           </label>
-          <input className="input-base" placeholder="Talla incorrecta, defecto de fábrica..."
-            value={reason} onChange={e => setReason(e.target.value)} />
+          <select className="input-base" value={reason} onChange={e => setReason(e.target.value)}>
+            <option value="">Seleccionar razón...</option>
+            <option value="size">Talla incorrecta</option>
+            <option value="damaged">Prenda dañada / defecto</option>
+            <option value="order">Encargo no aceptado</option>
+            <option value="other">Otro</option>
+          </select>
         </div>
         <div>
           <label className="text-[12px] font-semibold text-luma-text mb-1.5 block">
@@ -424,11 +429,10 @@ function NewSaleModal({ onSaved, onClose }) {
               Buscar producto
             </label>
             <div className="relative">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-luma-faint pointer-events-none" />
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-luma-faint pointer-events-none z-10" />
               <input
                 ref={searchRef}
-                className="input-base"
-                style={{ paddingLeft: '2.25rem' }}
+                className="input-base !pl-9"
                 placeholder="Nombre, SKU o referencia..."
                 value={query}
                 onChange={e => setQuery(e.target.value)}
@@ -586,10 +590,9 @@ function NewSaleModal({ onSaved, onClose }) {
               </div>
             ) : (
               <div className="relative">
-                <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-luma-faint pointer-events-none" />
+                <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-luma-faint pointer-events-none z-10" />
                 <input
-                  className="input-base"
-                  style={{ paddingLeft: '2.25rem' }}
+                  className="input-base !pl-9"
                   placeholder="Buscar cliente por nombre o teléfono..."
                   value={customerQuery}
                   onChange={e => setCustomerQuery(e.target.value)}
@@ -737,24 +740,34 @@ export default function Ventas() {
   const [loading,  setLoading]  = useState(true)
   const [search,   setSearch]   = useState('')
   const [filter,   setFilter]   = useState('')
+  const [soldBy,   setSoldBy]   = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo,   setDateTo]   = useState('')
+  const [sellers,  setSellers]  = useState([])
   const [newModal,    setNewModal]    = useState(false)
   const [viewSale,    setViewSale]    = useState(null)
   const [returnModal, setReturnModal] = useState(false)
+
+  // Cargar lista de vendedores (para filtro)
+  useEffect(() => {
+    svc.getUsers()
+      .then(({ data }) => setSellers(data?.results ?? data ?? []))
+      .catch(() => {})
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
       const params = {}
       if (filter)   params.payment_method = filter
-      if (dateFrom) params.from_date = dateFrom
-      if (dateTo)   params.to_date   = dateTo
+      if (soldBy)   params.sold_by        = soldBy
+      if (dateFrom) params.from_date      = dateFrom
+      if (dateTo)   params.to_date        = dateTo
       const { data } = await svc.getSales(params)
       setSales(data?.results ?? data ?? [])
     } catch { toast.error('Error cargando ventas') }
     finally { setLoading(false) }
-  }, [filter, dateFrom, dateTo])
+  }, [filter, soldBy, dateFrom, dateTo])
 
   useEffect(() => { load() }, [load])
 
@@ -807,23 +820,32 @@ export default function Ventas() {
       </div>
 
       {/* Filtros */}
-      <div className="card p-4 flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-luma-faint pointer-events-none" />
+      <div className="card p-4 flex flex-col sm:flex-row gap-3 flex-wrap">
+        <div className="relative flex-1 min-w-[180px]">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-luma-faint pointer-events-none z-10" />
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar por numero o cliente..."
-            className="input-base"
-            style={{ paddingLeft: '2.25rem' }}
+            placeholder="Buscar por número o cliente..."
+            className="input-base !pl-9"
           />
         </div>
         <select value={filter} onChange={e => setFilter(e.target.value)} className="input-base w-full sm:w-40">
-          <option value="">Todos los metodos</option>
+          <option value="">Todos los métodos</option>
           {Object.entries(PAYMENT_LABELS).map(([k, v]) => (
             <option key={k} value={k}>{v}</option>
           ))}
         </select>
+        {sellers.length > 0 && (
+          <select value={soldBy} onChange={e => setSoldBy(e.target.value)} className="input-base w-full sm:w-40">
+            <option value="">Todos los vendedores</option>
+            {sellers.map(u => (
+              <option key={u.id} value={u.id}>
+                {u.first_name && u.last_name ? `${u.first_name} ${u.last_name}` : u.username}
+              </option>
+            ))}
+          </select>
+        )}
         <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="input-base w-full sm:w-36" title="Desde" />
         <input type="date" value={dateTo}   onChange={e => setDateTo(e.target.value)}   className="input-base w-full sm:w-36" title="Hasta" />
       </div>

@@ -145,7 +145,12 @@ class SaleViewSet(viewsets.ModelViewSet):
         from apps.customers.models import LoyaltyConfig
         loyalty = LoyaltyConfig.objects.first()
         if loyalty and loyalty.is_enabled and data.get("customer"):
-            points_earned = int(total / float(loyalty.points_per_amount))
+            try:
+                ppa = float(loyalty.points_per_amount or 0)
+                if ppa > 0:
+                    points_earned = int(total / ppa)
+            except (ZeroDivisionError, TypeError, ValueError):
+                points_earned = 0
 
         # 7. Crear la venta
         sale = Sale.objects.create(

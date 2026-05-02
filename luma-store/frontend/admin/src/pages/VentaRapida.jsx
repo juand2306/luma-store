@@ -162,8 +162,7 @@ export default function VentaRapida() {
           <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-luma-faint pointer-events-none z-10" />
           <input
             ref={searchRef}
-            className="input-base py-4 text-[14px] rounded-2xl"
-            style={{ paddingLeft: '2.75rem' }}
+            className="input-base py-4 text-[14px] rounded-2xl !pl-11"
             placeholder="Buscar producto por nombre o SKU..."
             value={query}
             onChange={e => setQuery(e.target.value)}
@@ -313,10 +312,9 @@ export default function VentaRapida() {
                 </div>
               ) : (
                 <div className="relative">
-                  <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-luma-faint pointer-events-none" />
+                  <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-luma-faint pointer-events-none z-10" />
                   <input
-                    className="input-base"
-                    style={{ paddingLeft: '2.25rem' }}
+                    className="input-base !pl-9"
                     placeholder="Buscar cliente por nombre o teléfono..."
                     value={custQuery}
                     onChange={e => setCustQuery(e.target.value)}
