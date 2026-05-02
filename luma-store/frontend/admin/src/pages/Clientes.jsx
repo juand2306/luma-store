@@ -213,8 +213,8 @@ export default function Clientes() {
     }
   }
 
-  const totalRevenue = customers.reduce((s, c) => s + (c.total_purchases || 0), 0)
-  const totalPoints  = customers.reduce((s, c) => s + (c.points || 0), 0)
+  const totalRevenue = customers.reduce((s, c) => s + (Number(c.total_purchases) || 0), 0)
+  const totalPoints  = customers.reduce((s, c) => s + (Number(c.points) || 0), 0)
 
   if (loading) return <PageLoader />
 
@@ -250,7 +250,7 @@ export default function Clientes() {
         <div className="relative flex-1">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-luma-faint" />
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por nombre o teléfono..."
-            className="input-base pl-9" />
+            className="input-base" style={{ paddingLeft: '2.25rem' }} />
         </div>
         <button onClick={load} className="btn-ghost"><RefreshCw size={15} /></button>
       </div>

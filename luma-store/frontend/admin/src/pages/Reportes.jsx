@@ -17,6 +17,18 @@ const fmt = (n) => `$${Number(n || 0).toLocaleString('es-CO')}`
 
 const COLORS = ['#0D8585', '#34C5A5', '#5B8DEF', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899']
 
+const PAYMENT_LABELS = {
+  cash:      'Efectivo',
+  transfer:  'Transferencia',
+  card:      'Tarjeta',
+  debit:     'Débito',
+  credit:    'Crédito',
+  nequi:     'Nequi',
+  daviplata: 'Daviplata',
+  other:     'Otro',
+  mixed:     'Mixto',
+}
+
 function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null
   return (
@@ -183,9 +195,9 @@ export default function Reportes() {
                   <ResponsiveContainer width="50%" height={160}>
                     <PieChart>
                       <Pie
-                        data={paymentChart}
+                        data={paymentChart.map(p => ({ ...p, name: PAYMENT_LABELS[p.payment_method] || p.payment_method }))}
                         dataKey="count"
-                        nameKey="payment_method"
+                        nameKey="name"
                         cx="50%" cy="50%"
                         innerRadius={45}
                         outerRadius={70}
@@ -203,8 +215,8 @@ export default function Reportes() {
                       <div key={p.payment_method} className="flex items-center gap-2">
                         <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: COLORS[i] }} />
                         <div>
-                          <p className="text-[12px] font-semibold capitalize">{p.payment_method}</p>
-                          <p className="text-[11px] text-luma-faint">{p.count} ventas</p>
+                          <p className="text-[12px] font-semibold">{PAYMENT_LABELS[p.payment_method] || p.payment_method}</p>
+                          <p className="text-[11px] text-luma-faint">{p.count} ventas · {fmt(p.total)}</p>
                         </div>
                       </div>
                     ))}

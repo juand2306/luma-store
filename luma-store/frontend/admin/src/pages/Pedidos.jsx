@@ -196,7 +196,9 @@ export default function Pedidos() {
     try {
       const { data } = await svc.getOrder(order.id)
       setDetail(data)
-      setNewStatus(data.status)
+      // Si el estado actual es 'new' (no está en STATUS_OPTIONS), inicializar al primer paso
+      const validStatus = STATUS_OPTIONS.find(s => s.value === data.status)
+      setNewStatus(validStatus ? data.status : STATUS_OPTIONS[0].value)
     } catch { toast.error('Error al cargar pedido') }
   }
 

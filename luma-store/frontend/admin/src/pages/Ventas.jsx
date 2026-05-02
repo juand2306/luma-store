@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import toast from 'react-hot-toast'
 import {
   Plus, Search, ShoppingCart, RefreshCw, X, Minus,
-  User, FileText, Star, UserPlus, Link2
+  User, FileText, Star, UserPlus, Link2, RotateCcw
 } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import Modal from '../components/ui/Modal'
@@ -41,6 +41,233 @@ function SaleRow({ sale, onView }) {
       <td className="font-bold text-[13px] text-teal-700">{fmt(sale.total)}</td>
       <td className="text-[11px] text-luma-muted">{sale.sold_by_name || '—'}</td>
     </tr>
+  )
+}
+
+// ── Búsqueda de variante reutilizable ─────────────────────────────────────────
+function VariantSearch({ query, onQueryChange, results, onSelect, selected, onClear, placeholder }) {
+  return (
+    <div className="relative">
+      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-luma-faint pointer-events-none" />
+      {selected ? (
+        <div className="flex items-center gap-2 px-3 py-2.5 bg-teal-50 border border-teal-200 rounded-xl">
+          <div className="flex-1">
+            <p className="text-[13px] font-semibold">{selected.product_name}</p>
+            <p className="text-[11px] text-luma-faint">
+              {[selected.size && `T:${selected.size}`, selected.color].filter(Boolean).join(' / ')}
+              {' '}· {fmt(selected.effective_price || selected.product_price)}
+            </p>
+          </div>
+          <button onClick={onClear} className="text-luma-faint hover:text-red-500"><X size={13} /></button>
+        </div>
+      ) : (
+        <>
+          <input
+            className="input-base"
+            style={{ paddingLeft: '2.25rem' }}
+            placeholder={placeholder}
+            value={query}
+            onChange={e => onQueryChange(e.target.value)}
+            autoComplete="off"
+          />
+          {results.length > 0 && (
+            <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-luma-border rounded-xl shadow-card-md z-30 max-h-44 overflow-y-auto">
+              {results.map(v => (
+                <button
+                  key={v.id}
+                  onClick={() => onSelect(v)}
+                  className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-cream-100 text-left text-[12px] border-b border-luma-border last:border-0"
+                >
+                  <div>
+                    <span className="font-semibold">{v.product_name}</span>
+                    {(v.size || v.color) && (
+                      <span className="text-luma-faint ml-2">
+                        {[v.size && `T:${v.size}`, v.color].filter(Boolean).join(' / ')}
+                      </span>
+                    )}
+                    <span className="text-luma-faint ml-2">({v.stock} stock)</span>
+                  </div>
+                  <span className="font-bold text-teal-600 ml-4">{fmt(v.effective_price || v.product_price)}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+// ── Modal: Devolución / Cambio ────────────────────────────────────────────────
+function ReturnModal({ onSaved, onClose }) {
+  const [type,       setType]       = useState('return')
+  const [retQuery,   setRetQuery]   = useState('')
+  const [retResults, setRetResults] = useState([])
+  const [retVariant, setRetVariant] = useState(null)
+  const [retQty,     setRetQty]     = useState(1)
+  const [retPrice,   setRetPrice]   = useState('')
+  const [swpQuery,   setSwpQuery]   = useState('')
+  const [swpResults, setSwpResults] = useState([])
+  const [swpVariant, setSwpVariant] = useState(null)
+  const [swpQty,     setSwpQty]     = useState(1)
+  const [swpPrice,   setSwpPrice]   = useState('')
+  const [reason,     setReason]     = useState('')
+  const [note,       setNote]       = useState('')
+  const [saving,     setSaving]     = useState(false)
+
+  useEffect(() => {
+    if (!retQuery.trim()) { setRetResults([]); return }
+    const t = setTimeout(async () => {
+      try { const { data } = await svc.searchProductsForSale(retQuery.trim()); setRetResults(data ?? []) } catch {}
+    }, 350)
+    return () => clearTimeout(t)
+  }, [retQuery])
+
+  useEffect(() => {
+    if (!swpQuery.trim()) { setSwpResults([]); return }
+    const t = setTimeout(async () => {
+      try { const { data } = await svc.searchProductsForSale(swpQuery.trim()); setSwpResults(data ?? []) } catch {}
+    }, 350)
+    return () => clearTimeout(t)
+  }, [swpQuery])
+
+  const handleSubmit = async () => {
+    if (!retVariant)                    { toast.error('Selecciona el producto a devolver'); return }
+    if (!retPrice)                      { toast.error('Ingresa el precio de devolución'); return }
+    if (type === 'swap' && !swpVariant) { toast.error('Selecciona el producto de reemplazo'); return }
+    setSaving(true)
+    try {
+      const payload = {
+        type,
+        returned_variant: retVariant.id,
+        returned_quantity: retQty,
+        returned_price: retPrice,
+        reason,
+        note,
+      }
+      if (type === 'swap') {
+        payload.swapped_variant  = swpVariant.id
+        payload.swapped_quantity = swpQty
+        if (swpPrice) payload.swapped_price = swpPrice
+      }
+      await svc.createReturn(payload)
+      toast.success(type === 'swap' ? 'Cambio registrado ✓' : 'Devolución registrada ✓')
+      onSaved()
+      onClose()
+    } catch (e) {
+      const resp = e.response?.data
+      const msg = typeof resp === 'string' ? resp
+        : Object.values(resp || {}).flat()[0] || 'Error al registrar'
+      toast.error(String(msg))
+    } finally { setSaving(false) }
+  }
+
+  const retDiff = type === 'swap' && swpVariant && swpPrice && retPrice
+    ? (Number(swpPrice) * swpQty) - (Number(retPrice) * retQty)
+    : null
+
+  return (
+    <Modal open onClose={onClose} title="Devolución / Cambio" size="md"
+      footer={
+        <div className="flex gap-2 justify-end">
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button variant="teal" loading={saving} onClick={handleSubmit} icon={RotateCcw}>
+            {type === 'swap' ? 'Registrar cambio' : 'Registrar devolución'}
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-4">
+        {/* Tipo */}
+        <div>
+          <label className="text-[12px] font-semibold text-luma-text mb-1.5 block">Tipo</label>
+          <div className="grid grid-cols-2 gap-2">
+            {[['return', 'Devolución'], ['swap', 'Cambio de prenda']].map(([val, label]) => (
+              <button key={val} onClick={() => setType(val)}
+                className={`py-2.5 rounded-xl text-[12px] font-semibold transition-all border
+                  ${type === val ? 'bg-teal-500 text-white border-teal-500' : 'bg-cream-100 text-luma-text border-luma-border hover:bg-cream-200'}`}
+              >{label}</button>
+            ))}
+          </div>
+        </div>
+
+        {/* Producto devuelto */}
+        <div>
+          <label className="text-[12px] font-semibold text-luma-text mb-1.5 block">Producto que devuelve el cliente</label>
+          <VariantSearch
+            query={retQuery} onQueryChange={setRetQuery}
+            results={retResults} onSelect={v => { setRetVariant(v); setRetResults([]); setRetPrice(String(v.effective_price || v.product_price || '')) }}
+            selected={retVariant} onClear={() => { setRetVariant(null); setRetQuery(''); setRetPrice('') }}
+            placeholder="Buscar producto devuelto..."
+          />
+        </div>
+
+        {retVariant && (
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[12px] font-semibold text-luma-text mb-1.5 block">Cantidad</label>
+              <input type="number" min="1" className="input-base" value={retQty}
+                onChange={e => setRetQty(Math.max(1, Number(e.target.value)))} />
+            </div>
+            <div>
+              <label className="text-[12px] font-semibold text-luma-text mb-1.5 block">Precio unitario</label>
+              <input type="number" className="input-base" value={retPrice}
+                onChange={e => setRetPrice(e.target.value)} placeholder="0" />
+            </div>
+          </div>
+        )}
+
+        {/* Producto de reemplazo (solo en cambio) */}
+        {type === 'swap' && (
+          <div>
+            <label className="text-[12px] font-semibold text-luma-text mb-1.5 block">Producto de reemplazo</label>
+            <VariantSearch
+              query={swpQuery} onQueryChange={setSwpQuery}
+              results={swpResults} onSelect={v => { setSwpVariant(v); setSwpResults([]); setSwpPrice(String(v.effective_price || v.product_price || '')) }}
+              selected={swpVariant} onClear={() => { setSwpVariant(null); setSwpQuery(''); setSwpPrice('') }}
+              placeholder="Buscar producto de cambio..."
+            />
+            {swpVariant && (
+              <div className="grid grid-cols-2 gap-3 mt-3">
+                <div>
+                  <label className="text-[12px] font-semibold text-luma-text mb-1.5 block">Cantidad</label>
+                  <input type="number" min="1" className="input-base" value={swpQty}
+                    onChange={e => setSwpQty(Math.max(1, Number(e.target.value)))} />
+                </div>
+                <div>
+                  <label className="text-[12px] font-semibold text-luma-text mb-1.5 block">Precio unitario</label>
+                  <input type="number" className="input-base" value={swpPrice}
+                    onChange={e => setSwpPrice(e.target.value)} placeholder="Precio del producto" />
+                </div>
+              </div>
+            )}
+            {retDiff !== null && (
+              <div className={`mt-2 px-3 py-2 rounded-xl text-[12px] font-semibold ${retDiff > 0 ? 'bg-teal-50 text-teal-700' : retDiff < 0 ? 'bg-amber-50 text-amber-700' : 'bg-cream-100 text-luma-muted'}`}>
+                {retDiff > 0 ? `Cliente paga diferencia: ${fmt(retDiff)}`
+                  : retDiff < 0 ? `Tienda devuelve diferencia: ${fmt(Math.abs(retDiff))}`
+                  : 'Sin diferencia de precio'}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Razón */}
+        <div>
+          <label className="text-[12px] font-semibold text-luma-text mb-1.5 block">
+            Razón <span className="text-luma-faint font-normal">(opcional)</span>
+          </label>
+          <input className="input-base" placeholder="Talla incorrecta, defecto de fábrica..."
+            value={reason} onChange={e => setReason(e.target.value)} />
+        </div>
+        <div>
+          <label className="text-[12px] font-semibold text-luma-text mb-1.5 block">
+            Nota interna <span className="text-luma-faint font-normal">(opcional)</span>
+          </label>
+          <textarea className="input-base resize-none" rows={2} placeholder="Observaciones adicionales..."
+            value={note} onChange={e => setNote(e.target.value)} />
+        </div>
+      </div>
+    </Modal>
   )
 }
 
@@ -200,7 +427,8 @@ function NewSaleModal({ onSaved, onClose }) {
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-luma-faint pointer-events-none" />
               <input
                 ref={searchRef}
-                className="input-base pl-9"
+                className="input-base"
+                style={{ paddingLeft: '2.25rem' }}
                 placeholder="Nombre, SKU o referencia..."
                 value={query}
                 onChange={e => setQuery(e.target.value)}
@@ -360,7 +588,8 @@ function NewSaleModal({ onSaved, onClose }) {
               <div className="relative">
                 <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-luma-faint pointer-events-none" />
                 <input
-                  className="input-base pl-9"
+                  className="input-base"
+                  style={{ paddingLeft: '2.25rem' }}
                   placeholder="Buscar cliente por nombre o teléfono..."
                   value={customerQuery}
                   onChange={e => setCustomerQuery(e.target.value)}
@@ -510,8 +739,9 @@ export default function Ventas() {
   const [filter,   setFilter]   = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo,   setDateTo]   = useState('')
-  const [newModal, setNewModal] = useState(false)
-  const [viewSale, setViewSale] = useState(null)
+  const [newModal,    setNewModal]    = useState(false)
+  const [viewSale,    setViewSale]    = useState(null)
+  const [returnModal, setReturnModal] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -548,6 +778,9 @@ export default function Ventas() {
           <p className="text-[13px] text-luma-muted mt-0.5">{filtered.length} registros</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" icon={RotateCcw} onClick={() => setReturnModal(true)}>
+            Devolución
+          </Button>
           <Button variant="teal" icon={Plus} onClick={() => setNewModal(true)}>
             Nueva venta
           </Button>
@@ -581,7 +814,8 @@ export default function Ventas() {
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Buscar por numero o cliente..."
-            className="input-base pl-9"
+            className="input-base"
+            style={{ paddingLeft: '2.25rem' }}
           />
         </div>
         <select value={filter} onChange={e => setFilter(e.target.value)} className="input-base w-full sm:w-40">
@@ -623,6 +857,7 @@ export default function Ventas() {
         )}
       </div>
 
+      {returnModal && <ReturnModal onSaved={load} onClose={() => setReturnModal(false)} />}
       {newModal && <NewSaleModal onSaved={load} onClose={() => setNewModal(false)} />}
       {viewSale && <SaleDetailModal sale={viewSale} onClose={() => setViewSale(null)} />}
     </div>
