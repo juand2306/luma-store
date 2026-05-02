@@ -20,9 +20,17 @@ def get_open_session():
 
 
 def generate_sale_number():
-    """Genera el número correlativo de venta (VTA-00001, VTA-00002...)."""
-    count = Sale.objects.count() + 1
-    return f"VTA-{count:05d}"
+    """Genera el número correlativo de venta (VTA-00001, VTA-00002...).
+    Usa el número de la última venta para evitar colisiones cuando se borran ventas.
+    """
+    last_number = Sale.objects.order_by('-id').values_list('number', flat=True).first()
+    if not last_number:
+        return "VTA-00001"
+    try:
+        next_num = int(last_number.rsplit('-', 1)[-1]) + 1
+    except (ValueError, IndexError):
+        next_num = Sale.objects.count() + 1
+    return f"VTA-{next_num:05d}"
 
 
 class SaleViewSet(viewsets.ModelViewSet):
