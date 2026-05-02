@@ -30,16 +30,16 @@ function SaleRow({ sale, onView }) {
           {new Date(sale.created_at).toLocaleString('es-CO', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })}
         </p>
       </td>
-      <td>
+      <td className="hidden sm:table-cell">
         <p className="text-[12px]">{sale.customer_name || <span className="text-luma-faint italic">Sin cliente</span>}</p>
       </td>
-      <td>
+      <td className="hidden md:table-cell">
         <span className="text-[10px] uppercase tracking-wide bg-cream-200 px-2 py-0.5 rounded font-semibold">
           {PAYMENT_LABELS[sale.payment_method] || sale.payment_method}
         </span>
       </td>
       <td className="font-bold text-[13px] text-teal-700">{fmt(sale.total)}</td>
-      <td className="text-[11px] text-luma-muted">{sale.sold_by_name || '—'}</td>
+      <td className="hidden lg:table-cell text-[11px] text-luma-muted">{sale.sold_by_name || '—'}</td>
     </tr>
   )
 }
@@ -393,7 +393,7 @@ function NewSaleModal({ onSaved, onClose }) {
     <>
       <Modal open onClose={onClose} title="Nueva venta" size="lg"
         footer={
-          <div className="flex items-center justify-between w-full">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between w-full gap-3">
             <div>
               {change !== null && change >= 0 && (
                 <div className="bg-teal-50 border border-teal-200 rounded-xl px-4 py-2">
@@ -406,10 +406,10 @@ function NewSaleModal({ onSaved, onClose }) {
                 <p className="text-[12px] text-red-500 font-medium">Efectivo insuficiente</p>
               )}
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 justify-end">
               <Button variant="outline" onClick={onClose}>Cancelar</Button>
               <Button variant="teal" loading={saving} onClick={handleSubmit} icon={ShoppingCart}>
-                Registrar venta · {fmt(subtotal)}
+                <span className="hidden sm:inline">Registrar venta · </span>{fmt(subtotal)}
               </Button>
             </div>
           </div>
@@ -620,7 +620,7 @@ function NewSaleModal({ onSaved, onClose }) {
           {/* Método de pago */}
           <div>
             <label className="text-[12px] font-semibold text-luma-text mb-1.5 block">Método de pago</label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {Object.entries(PAYMENT_LABELS).filter(([k]) => k !== 'mixed').map(([val, label]) => (
                 <button
                   key={val}
@@ -674,7 +674,7 @@ function SaleDetailModal({ sale, onClose }) {
   return (
     <Modal open onClose={onClose} title={`Venta ${sale.number}`} size="md">
       <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-3 text-[12px]">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[12px]">
           {[
             ['Fecha',    new Date(sale.created_at).toLocaleString('es-CO')],
             ['Vendedor', sale.sold_by_name || '—'],
@@ -790,12 +790,13 @@ export default function Ventas() {
           <h2 className="page-title">Ventas</h2>
           <p className="text-[13px] text-luma-muted mt-0.5">{filtered.length} registros</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" icon={RotateCcw} onClick={() => setReturnModal(true)}>
-            Devolución
+            <span className="hidden sm:inline">Devolución</span>
           </Button>
           <Button variant="teal" icon={Plus} onClick={() => setNewModal(true)}>
-            Nueva venta
+            <span className="hidden sm:inline">Nueva venta</span>
+            <span className="sm:hidden">Nueva</span>
           </Button>
           <button onClick={load} className="btn-ghost" title="Actualizar">
             <RefreshCw size={15} />
@@ -804,7 +805,7 @@ export default function Ventas() {
       </div>
 
       {/* KPI Strip */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="card p-4">
           <p className="section-label">Total ingresos</p>
           <p className="text-xl font-bold text-teal-600 mt-1">{fmt(totalRevenue)}</p>
@@ -865,10 +866,10 @@ export default function Ventas() {
               <thead>
                 <tr>
                   <th>Numero</th>
-                  <th>Cliente</th>
-                  <th>Metodo pago</th>
+                  <th className="hidden sm:table-cell">Cliente</th>
+                  <th className="hidden md:table-cell">Metodo pago</th>
                   <th>Total</th>
-                  <th>Vendedor</th>
+                  <th className="hidden lg:table-cell">Vendedor</th>
                 </tr>
               </thead>
               <tbody>

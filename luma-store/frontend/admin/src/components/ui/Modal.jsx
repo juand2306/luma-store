@@ -33,12 +33,12 @@ export default function Modal({ open, onClose, title, children, size = 'md', foo
   return createPortal(
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
       style={{ background: 'rgba(0,0,0,0.25)', backdropFilter: 'blur(4px)' }}
       onClick={(e) => { if (e.target === overlayRef.current) onClose?.() }}
     >
-      <div className={`w-full ${sizes[size]} bg-white rounded-2xl shadow-modal
-        animate-scale-in overflow-hidden flex flex-col max-h-[90vh]`}>
+      <div className={`w-full ${sizes[size]} bg-white sm:rounded-2xl rounded-t-2xl shadow-modal
+        animate-scale-in overflow-hidden flex flex-col max-h-[95vh] sm:max-h-[90vh]`}>
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-luma-border flex-shrink-0">
           <h2 className="text-[15px] font-semibold text-luma-text">{title}</h2>
