@@ -180,10 +180,12 @@ function ViewCustomerModal({ customer, onEdit, onClose }) {
 }
 
 export default function Clientes() {
-  const [customers, setCustomers] = useState([])
-  const [loading,   setLoading]   = useState(true)
-  const [search,    setSearch]    = useState('')
-  const [formData,  setFormData]  = useState(null) // null=closed, {}=new, customer=edit
+  const [customers,    setCustomers]    = useState([])
+  const [loading,      setLoading]      = useState(true)
+  const [search,       setSearch]       = useState('')
+  const [segment,      setSegment]      = useState('')   // filtro frontend por segmento
+  const [sortBy,       setSortBy]       = useState('')   // orden frontend
+  const [formData,     setFormData]     = useState(null) // null=closed, {}=new, customer=edit
   const [viewCustomer, setViewCustomer] = useState(null)
 
   const load = useCallback(async () => {
@@ -196,6 +198,16 @@ export default function Clientes() {
   }, [search])
 
   useEffect(() => { load() }, [load])
+
+  // Filtro + orden frontend (segment es propiedad computada, no campo de BD)
+  const filtered = (() => {
+    let list = segment ? customers.filter(c => c.segment === segment) : customers
+    if (sortBy === 'name')      list = [...list].sort((a, b) => a.name.localeCompare(b.name, 'es'))
+    if (sortBy === 'purchases') list = [...list].sort((a, b) => (b.purchase_count || 0) - (a.purchase_count || 0))
+    if (sortBy === 'spent')     list = [...list].sort((a, b) => Number(b.total_purchases || 0) - Number(a.total_purchases || 0))
+    if (sortBy === 'points')    list = [...list].sort((a, b) => (b.points || 0) - (a.points || 0))
+    return list
+  })()
 
   const handleSave = async (form, id) => {
     try {
@@ -223,7 +235,11 @@ export default function Clientes() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="page-title">Clientes</h2>
-          <p className="text-[13px] text-luma-muted">{customers.length} clientes registrados</p>
+          <p className="text-[13px] text-luma-muted">
+            {filtered.length !== customers.length
+              ? `${filtered.length} de ${customers.length} clientes`
+              : `${customers.length} clientes registrados`}
+          </p>
         </div>
         <Button variant="teal" icon={Plus} onClick={() => setFormData({})}>
           Nuevo cliente
@@ -245,20 +261,43 @@ export default function Clientes() {
         ))}
       </div>
 
-      {/* Search */}
-      <div className="card p-4 flex gap-3">
-        <div className="relative flex-1">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-luma-faint" />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por nombre o teléfono..."
-            className="input-base" style={{ paddingLeft: '2.25rem' }} />
+      {/* Filtros */}
+      <div className="card p-4 flex flex-col sm:flex-row gap-3 flex-wrap">
+        {/* Buscador */}
+        <div className="relative flex-1 min-w-[180px]">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-luma-faint pointer-events-none z-10" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Buscar por nombre o teléfono..."
+            className="input-base !pl-9"
+          />
         </div>
-        <button onClick={load} className="btn-ghost"><RefreshCw size={15} /></button>
+        {/* Segmento */}
+        <select value={segment} onChange={e => setSegment(e.target.value)} className="input-base w-full sm:w-44">
+          <option value="">Todos los segmentos</option>
+          <option value="new">🌱 Nuevo</option>
+          <option value="frequent">⭐ Frecuente</option>
+          <option value="regular">✓ Regular</option>
+          <option value="inactive">💤 Inactivo</option>
+        </select>
+        {/* Ordenar */}
+        <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="input-base w-full sm:w-44">
+          <option value="">Ordenar: recientes</option>
+          <option value="name">Nombre A→Z</option>
+          <option value="purchases">Más compras</option>
+          <option value="spent">Mayor gasto</option>
+          <option value="points">Más puntos</option>
+        </select>
+        <button onClick={load} className="btn-ghost" title="Actualizar"><RefreshCw size={15} /></button>
       </div>
 
       {/* Table */}
       <div className="card overflow-hidden">
-        {customers.length === 0 ? (
-          <EmptyState icon={Users} title="Sin clientes" description="Registra el primer cliente." action={<Button variant="teal" icon={Plus} size="sm" onClick={() => setFormData({})}>Nuevo cliente</Button>} />
+        {filtered.length === 0 ? (
+          customers.length === 0
+            ? <EmptyState icon={Users} title="Sin clientes" description="Registra el primer cliente." action={<Button variant="teal" icon={Plus} size="sm" onClick={() => setFormData({})}>Nuevo cliente</Button>} />
+            : <EmptyState icon={Search} title="Sin resultados" description="Ningún cliente coincide con los filtros aplicados." />
         ) : (
           <div className="overflow-x-auto">
             <table className="luma-table">
@@ -272,7 +311,7 @@ export default function Clientes() {
                 </tr>
               </thead>
               <tbody>
-                {customers.map(c => (
+                {filtered.map(c => (
                   <CustomerRow key={c.id} customer={c} onView={(c) => { setViewCustomer(c); setFormData(null) }} />
                 ))}
               </tbody>
