@@ -249,21 +249,30 @@ class ProductVariantViewSet(viewsets.ModelViewSet):
 
 
 class StockMovementViewSet(viewsets.ModelViewSet):
-    queryset = StockMovement.objects.select_related(
-        "variant__product", "created_by"
-    ).order_by("-created_at")
     serializer_class = StockMovementSerializer
     permission_classes = [IsOwnerOrAdmin]
-    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    filterset_fields = ["type", "variant", "variant__product"]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ["type", "variant", "variant__product", "created_by"]
+    search_fields = ["variant__product__name", "note"]
     ordering_fields = ["created_at"]
+    http_method_names = ["get", "post", "head", "options"]
+
+    def get_queryset(self):
+        qs = StockMovement.objects.select_related(
+            "variant__product", "created_by"
+        ).order_by("-created_at")
+        date_from = self.request.query_params.get("date_from")
+        date_to   = self.request.query_params.get("date_to")
+        if date_from:
+            qs = qs.filter(created_at__date__gte=date_from)
+        if date_to:
+            qs = qs.filter(created_at__date__lte=date_to)
+        return qs
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
         context["request"] = self.request
         return context
-
-    http_method_names = ["get", "post", "head", "options"]  # No update/delete en movimientos
 
 
 # ── Endpoints Públicos del Portal ──────────────────────────────────────────────

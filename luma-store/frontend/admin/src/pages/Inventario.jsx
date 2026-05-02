@@ -5,7 +5,7 @@ import {
   Plus, Search, Filter, RefreshCw,
   Package, AlertTriangle, MoreHorizontal,
   Edit2, Trash2, Eye, EyeOff, Tag, Box, TrendingDown, ShoppingBag,
-  Upload, Copy, PowerOff, Zap
+  Upload, Copy, PowerOff, Zap, X, ChevronDown
 } from 'lucide-react'
 import api from '../api/client'
 
@@ -39,7 +39,10 @@ function ProductRow({ product, categories, onView, onEdit, onVariants, onMovemen
   const closeMenu = () => setMenuOpen(false)
 
   return (
-    <tr className="group cursor-pointer" onClick={() => onView(product)}>
+    <tr
+      className={`group cursor-pointer transition-colors ${product.status === 'inactive' ? 'opacity-60 bg-cream-100/60' : ''}`}
+      onClick={() => onView(product)}
+    >
       {/* Producto */}
       <td>
         <div className="flex items-center gap-3">
@@ -311,6 +314,7 @@ export default function Inventario() {
       <div className="flex gap-1 p-1 bg-cream-100 rounded-2xl w-fit">
         {[
           { key: 'catalog',    label: 'Catálogo' },
+          { key: 'movements',  label: 'Movimientos' },
           { key: 'alerts',     label: `Alertas${(outOfStock + lowStock) > 0 ? ` (${outOfStock + lowStock})` : ''}` },
           { key: 'prediction', label: 'Reabastecimiento' },
         ].map(t => (
@@ -373,7 +377,7 @@ export default function Inventario() {
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-luma-faint pointer-events-none" />
               <input type="text" placeholder="Buscar por nombre o SKU..." value={search}
                 onChange={e => { setSearch(e.target.value); setPage(1) }}
-                className="input-base pl-9" />
+                className="input-base" style={{ paddingLeft: '2.25rem' }} />
             </div>
             <select value={filterCat} onChange={e => { setFilterCat(e.target.value); setPage(1) }}
               className="input-base w-full sm:w-40">
@@ -485,6 +489,9 @@ export default function Inventario() {
         </>
       )}
 
+      {/* ── TAB: Movimientos ── */}
+      {activeTab === 'movements' && <MovimientosPanel />}
+
       {/* ── TAB: Alertas de Stock (5.4) ── */}
       {activeTab === 'alerts' && (
         <StockAlertsPanel
@@ -552,7 +559,6 @@ export default function Inventario() {
       <CategoryModal
         open={showCatModal}
         onClose={() => { setShowCatModal(false); load() }}
-        categories={categories}
       />
 
       {showCsvModal && (
@@ -819,70 +825,426 @@ function RestockPredictionPanel({ products }) {
 }
 
 
+// ── MOV type config ───────────────────────────────────────────────────────────
+const MOV_TYPE_LABELS = {
+  entry:    { label: 'Entrada',          cls: 'bg-teal-50 text-teal-700' },
+  sale:     { label: 'Venta',            cls: 'bg-blue-50 text-blue-700' },
+  return:   { label: 'Devolución',       cls: 'bg-amber-50 text-amber-700' },
+  swap_in:  { label: 'Cambio — Entrada', cls: 'bg-purple-50 text-purple-700' },
+  swap_out: { label: 'Cambio — Salida',  cls: 'bg-orange-50 text-orange-700' },
+  adjust:   { label: 'Ajuste manual',    cls: 'bg-gray-100 text-gray-700' },
+}
+
+// ── Panel: Movimientos de Stock con filtros ───────────────────────────────────
+function MovimientosPanel() {
+  const [movements, setMovements] = useState([])
+  const [loading,   setLoading]   = useState(true)
+  const [count,     setCount]     = useState(0)
+  const [page,      setPage]      = useState(1)
+  const [filterType,     setFilterType]     = useState('')
+  const [filterDateFrom, setFilterDateFrom] = useState('')
+  const [filterDateTo,   setFilterDateTo]   = useState('')
+  const [filterSearch,   setFilterSearch]   = useState('')
+  const PAGE_SZ = 30
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const params = { page, page_size: PAGE_SZ }
+      if (filterType)     params.type      = filterType
+      if (filterDateFrom) params.date_from = filterDateFrom
+      if (filterDateTo)   params.date_to   = filterDateTo
+      if (filterSearch)   params.search    = filterSearch
+      const { data } = await svc.getMovements(params)
+      const rows = data?.results ?? data ?? []
+      setMovements(Array.isArray(rows) ? rows : [])
+      setCount(data?.count ?? (Array.isArray(rows) ? rows.length : 0))
+    } catch { toast.error('Error cargando movimientos') }
+    finally  { setLoading(false) }
+  }, [page, filterType, filterDateFrom, filterDateTo, filterSearch])
+
+  useEffect(() => { load() }, [load])
+
+  const totalPages = Math.ceil(count / PAGE_SZ)
+
+  const clearFilters = () => {
+    setFilterType('')
+    setFilterDateFrom('')
+    setFilterDateTo('')
+    setFilterSearch('')
+    setPage(1)
+  }
+
+  const hasFilters = filterType || filterDateFrom || filterDateTo || filterSearch
+
+  return (
+    <div className="space-y-4">
+      {/* Filter bar */}
+      <div className="card p-4">
+        <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
+          {/* Buscar por producto */}
+          <div className="relative flex-1 min-w-[200px]">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-luma-faint pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Buscar por producto o nota..."
+              value={filterSearch}
+              onChange={e => { setFilterSearch(e.target.value); setPage(1) }}
+              className="input-base"
+              style={{ paddingLeft: '2.25rem' }}
+            />
+          </div>
+          {/* Tipo de movimiento */}
+          <select
+            value={filterType}
+            onChange={e => { setFilterType(e.target.value); setPage(1) }}
+            className="input-base w-full sm:w-48"
+          >
+            <option value="">Todos los tipos</option>
+            {Object.entries(MOV_TYPE_LABELS).map(([k, v]) => (
+              <option key={k} value={k}>{v.label}</option>
+            ))}
+          </select>
+          {/* Fecha desde */}
+          <div className="flex items-center gap-2">
+            <label className="text-[11px] text-luma-faint whitespace-nowrap">Desde</label>
+            <input
+              type="date"
+              value={filterDateFrom}
+              onChange={e => { setFilterDateFrom(e.target.value); setPage(1) }}
+              className="input-base w-36"
+            />
+          </div>
+          {/* Fecha hasta */}
+          <div className="flex items-center gap-2">
+            <label className="text-[11px] text-luma-faint whitespace-nowrap">Hasta</label>
+            <input
+              type="date"
+              value={filterDateTo}
+              onChange={e => { setFilterDateTo(e.target.value); setPage(1) }}
+              className="input-base w-36"
+            />
+          </div>
+          {/* Acciones */}
+          {hasFilters && (
+            <button
+              onClick={clearFilters}
+              className="btn-ghost text-[12px] flex-shrink-0 text-red-500 hover:text-red-600"
+            >
+              Limpiar filtros
+            </button>
+          )}
+          <button onClick={load} className="btn-ghost flex-shrink-0" title="Actualizar">
+            <RefreshCw size={15} />
+          </button>
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="card overflow-hidden">
+        <div className="px-5 py-3 border-b border-luma-border flex items-center justify-between">
+          <span className="text-[13px] font-semibold text-luma-text">Historial de movimientos</span>
+          <span className="text-[11px] text-luma-faint">{count} registros</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="luma-table">
+            <thead>
+              <tr>
+                <th>Fecha y hora</th>
+                <th>Tipo</th>
+                <th>Producto / Variante</th>
+                <th className="text-right">Cantidad</th>
+                <th>Usuario</th>
+                <th>Nota</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} cols={6} />)
+              ) : movements.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-12 text-center">
+                    <EmptyState
+                      icon={Box}
+                      title="Sin movimientos"
+                      description={hasFilters ? 'No hay resultados con los filtros actuales' : 'Aún no se han registrado movimientos de stock'}
+                    />
+                  </td>
+                </tr>
+              ) : (
+                movements.map(m => {
+                  const mt = MOV_TYPE_LABELS[m.type] || { label: m.type, cls: 'bg-cream-100 text-luma-muted' }
+                  return (
+                    <tr key={m.id}>
+                      <td className="whitespace-nowrap">
+                        <p className="text-[12px] font-medium text-luma-text">
+                          {new Date(m.created_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        </p>
+                        <p className="text-[10px] text-luma-faint">
+                          {new Date(m.created_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </td>
+                      <td>
+                        <span className={`text-[10px] font-bold px-2 py-1 rounded-lg ${mt.cls}`}>
+                          {mt.label}
+                        </span>
+                      </td>
+                      <td className="max-w-[220px]">
+                        <p className="text-[12px] font-medium text-luma-text truncate">{m.variant_display}</p>
+                      </td>
+                      <td className="text-right">
+                        <span className={`text-[13px] font-bold ${m.quantity > 0 ? 'text-teal-600' : 'text-red-500'}`}>
+                          {m.quantity > 0 ? '+' : ''}{m.quantity}
+                        </span>
+                      </td>
+                      <td className="text-[11px] text-luma-muted whitespace-nowrap">
+                        {m.created_by_name || <span className="text-luma-faint">—</span>}
+                      </td>
+                      <td className="text-[11px] text-luma-faint max-w-[160px] truncate">
+                        {m.note || '—'}
+                      </td>
+                    </tr>
+                  )
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+        {totalPages > 1 && (
+          <div className="px-5 py-3 border-t border-luma-border flex items-center justify-between">
+            <span className="text-[12px] text-luma-muted">
+              Página {page} de {totalPages} · {count} movimientos
+            </span>
+            <div className="flex gap-1">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="px-3 py-1.5 text-[12px] rounded-lg border border-luma-border hover:bg-cream-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                Anterior
+              </button>
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                className="px-3 py-1.5 text-[12px] rounded-lg border border-luma-border hover:bg-cream-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                Siguiente
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Category Manager Modal ────────────────────────────────────────────────────
-function CategoryModal({ open, onClose, categories: initial }) {
-  const [cats, setCats]   = useState([])
-  const [name, setName]   = useState('')
-  const [saving, setSaving] = useState(false)
+function CategoryModal({ open, onClose }) {
+  const [cats, setCats]       = useState([])
+  const [loading, setLoading] = useState(false)
+  const [saving, setSaving]   = useState(false)
+  const [editId, setEditId]   = useState(null)
+  const [editName, setEditName] = useState('')
+  const [newName, setNewName]   = useState('')
+  const [newParent, setNewParent] = useState('')   // '' = raíz, id = subcategoría
 
-  useEffect(() => {
-    if (open) setCats(initial)
-  }, [open, initial])
+  const load = async () => {
+    setLoading(true)
+    try {
+      const { data } = await svc.getCategories()
+      setCats(data?.results ?? data ?? [])
+    } finally { setLoading(false) }
+  }
 
-  const add = async () => {
-    if (!name.trim()) return
+  useEffect(() => { if (open) load() }, [open])
+
+  const handleCreate = async () => {
+    if (!newName.trim()) return
     setSaving(true)
     try {
-      const { data } = await svc.createCategory({ name, order: cats.length + 1 })
-      setCats(prev => [...prev, data])
-      setName('')
-      toast.success('Categoría creada')
-    } catch {
-      toast.error('Error al crear categoría')
+      await svc.createCategory({
+        name:   newName.trim(),
+        parent: newParent || null,
+        order:  cats.length + 1,
+      })
+      setNewName('')
+      toast.success(newParent ? 'Subcategoría creada' : 'Categoría creada')
+      load()
+    } catch (e) {
+      toast.error(e.response?.data?.name?.[0] || 'Error al crear')
     } finally { setSaving(false) }
   }
 
-  const remove = async (id) => {
+  const handleEdit = async (id) => {
+    if (!editName.trim()) return
+    setSaving(true)
+    try {
+      await svc.updateCategory(id, { name: editName.trim() })
+      setEditId(null)
+      toast.success('Nombre actualizado')
+      load()
+    } catch { toast.error('Error al actualizar') }
+    finally { setSaving(false) }
+  }
+
+  const handleDelete = async (id) => {
     try {
       await svc.deleteCategory(id)
-      setCats(prev => prev.filter(c => c.id !== id))
       toast.success('Categoría eliminada')
+      load()
     } catch (e) {
-      toast.error(e.response?.data?.detail || 'No se puede eliminar')
+      toast.error(e.response?.data?.detail || 'No se puede eliminar — tiene productos activos')
     }
   }
 
+  const rootCats = cats.filter(c => !c.parent)
+
   return (
-    <Modal open={open} onClose={onClose} title="Categorías" size="sm">
-      <div className="space-y-4">
-        <div className="flex gap-2">
-          <input
-            value={name}
-            onChange={e => setName(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && add()}
-            placeholder="Nueva categoría..."
-            className="input-base flex-1"
-          />
-          <Button variant="teal" size="sm" loading={saving} onClick={add} icon={Plus}>
-            Agregar
-          </Button>
-        </div>
-        <div className="space-y-1.5 max-h-64 overflow-y-auto">
-          {cats.map(c => (
-            <div key={c.id} className="flex items-center justify-between px-3 py-2 rounded-xl hover:bg-cream-100 group">
-              <span className="text-[13px] font-medium text-luma-text">{c.name}</span>
-              <button
-                onClick={() => remove(c.id)}
-                className="opacity-0 group-hover:opacity-100 text-luma-faint hover:text-red-500 transition-all p-1"
-              >
-                <Trash2 size={12} />
-              </button>
-            </div>
-          ))}
-          {cats.length === 0 && (
-            <p className="text-[12px] text-luma-faint text-center py-4">Sin categorías aún</p>
+    <Modal open={open} onClose={onClose} title="Gestión de Categorías" size="md">
+      <div className="space-y-5">
+        {/* ── Crear nueva ── */}
+        <div className="bg-cream-50 border border-luma-border rounded-xl p-4 space-y-3">
+          <p className="text-[12px] font-semibold text-luma-text">Crear nueva</p>
+          <div className="flex gap-2 flex-wrap">
+            <select
+              value={newParent}
+              onChange={e => setNewParent(e.target.value)}
+              className="input-base w-full sm:w-48"
+            >
+              <option value="">— Categoría principal —</option>
+              {rootCats.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+            <input
+              value={newName}
+              onChange={e => setNewName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleCreate()}
+              placeholder={newParent ? 'Nombre de subcategoría...' : 'Nombre de categoría...'}
+              className="input-base flex-1 min-w-[160px]"
+            />
+            <Button variant="teal" size="sm" loading={saving} onClick={handleCreate} icon={Plus}>
+              Crear
+            </Button>
+          </div>
+          {newParent && (
+            <p className="text-[11px] text-teal-600">
+              Se creará como subcategoría de: <strong>{cats.find(c => String(c.id) === String(newParent))?.name}</strong>
+            </p>
           )}
         </div>
+
+        {/* ── Lista ── */}
+        {loading ? (
+          <div className="text-center py-8">
+            <div className="w-6 h-6 border-2 border-teal-500 border-t-transparent rounded-full animate-spin mx-auto" />
+          </div>
+        ) : rootCats.length === 0 ? (
+          <p className="text-[12px] text-luma-faint text-center py-4">Sin categorías. Crea la primera arriba.</p>
+        ) : (
+          <div className="space-y-2 max-h-[380px] overflow-y-auto pr-1">
+            {rootCats.map(cat => (
+              <div key={cat.id} className="border border-luma-border rounded-xl overflow-hidden">
+                {/* Categoría raíz */}
+                <div className="flex items-center gap-3 px-4 py-3 bg-cream-50 group">
+                  <span className="w-2.5 h-2.5 rounded-full bg-teal-500 flex-shrink-0" />
+                  {editId === cat.id ? (
+                    <input
+                      autoFocus
+                      value={editName}
+                      onChange={e => setEditName(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter')  handleEdit(cat.id)
+                        if (e.key === 'Escape') setEditId(null)
+                      }}
+                      className="input-base flex-1 py-1 text-[13px]"
+                    />
+                  ) : (
+                    <span className="text-[13px] font-semibold text-luma-text flex-1">{cat.name}</span>
+                  )}
+                  {cat.subcategories?.length > 0 && (
+                    <span className="text-[10px] text-luma-faint bg-cream-200 px-1.5 py-0.5 rounded-md flex-shrink-0">
+                      {cat.subcategories.length} sub
+                    </span>
+                  )}
+                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                    {editId === cat.id ? (
+                      <>
+                        <button onClick={() => handleEdit(cat.id)}
+                          disabled={saving}
+                          className="px-2 py-1 rounded-lg bg-teal-500 text-white text-[10px] font-bold disabled:opacity-60">
+                          ✓ Guardar
+                        </button>
+                        <button onClick={() => setEditId(null)}
+                          className="p-1.5 rounded-lg hover:bg-cream-200 text-luma-faint">
+                          <X size={12} />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button onClick={() => { setEditId(cat.id); setEditName(cat.name) }}
+                          className="p-1.5 rounded-lg hover:bg-cream-200 text-luma-muted hover:text-teal-600 transition-colors">
+                          <Edit2 size={12} />
+                        </button>
+                        <button onClick={() => handleDelete(cat.id)}
+                          className="p-1.5 rounded-lg hover:bg-red-50 text-luma-faint hover:text-red-500 transition-colors">
+                          <Trash2 size={12} />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Subcategorías */}
+                {cat.subcategories?.filter(s => s.is_active !== false).map(sub => (
+                  <div key={sub.id} className="flex items-center gap-3 px-4 py-2.5 pl-9 border-t border-luma-border group hover:bg-cream-50/60">
+                    <span className="w-1.5 h-1.5 rounded-full bg-luma-faint flex-shrink-0" />
+                    {editId === sub.id ? (
+                      <input
+                        autoFocus
+                        value={editName}
+                        onChange={e => setEditName(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter')  handleEdit(sub.id)
+                          if (e.key === 'Escape') setEditId(null)
+                        }}
+                        className="input-base flex-1 py-1 text-[12px]"
+                      />
+                    ) : (
+                      <span className="text-[12px] text-luma-muted flex-1">{sub.name}</span>
+                    )}
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                      {editId === sub.id ? (
+                        <>
+                          <button onClick={() => handleEdit(sub.id)}
+                            disabled={saving}
+                            className="px-2 py-1 rounded-lg bg-teal-500 text-white text-[10px] font-bold disabled:opacity-60">
+                            ✓ Guardar
+                          </button>
+                          <button onClick={() => setEditId(null)}
+                            className="p-1.5 rounded-lg hover:bg-cream-200 text-luma-faint">
+                            <X size={12} />
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button onClick={() => { setEditId(sub.id); setEditName(sub.name) }}
+                            className="p-1.5 rounded-lg hover:bg-cream-200 text-luma-muted hover:text-teal-600 transition-colors">
+                            <Edit2 size={12} />
+                          </button>
+                          <button onClick={() => handleDelete(sub.id)}
+                            className="p-1.5 rounded-lg hover:bg-red-50 text-luma-faint hover:text-red-500 transition-colors">
+                            <Trash2 size={12} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </Modal>
   )

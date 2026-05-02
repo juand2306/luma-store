@@ -10,17 +10,19 @@ import * as svc from '../../api/services'
 
 // ── Columnas del CSV (spec + backend) ────────────────────────────────────────
 const COLUMNS = [
-  { key: 'name',        label: 'name',        required: true,  desc: 'Nombre del producto',                example: 'Blusa de algodón' },
-  { key: 'price',       label: 'price',       required: true,  desc: 'Precio de venta (solo números)',     example: '45000' },
-  { key: 'cost',        label: 'cost',        required: false, desc: 'Costo unitario (solo números)',      example: '20000' },
-  { key: 'description', label: 'description', required: false, desc: 'Descripción del producto',           example: 'Blusa manga larga...' },
-  { key: 'min_stock',   label: 'min_stock',   required: false, desc: 'Umbral mínimo de alerta de stock',  example: '5' },
+  { key: 'name',        label: 'name',        display: 'Nombre del producto',   required: true,  desc: 'Nombre como aparecerá en el catálogo',        example: 'Blusa de algodón' },
+  { key: 'price',       label: 'price',       display: 'Precio de venta',       required: true,  desc: 'Precio al público, solo números sin puntos',    example: '45000' },
+  { key: 'cost',        label: 'cost',        display: 'Costo de compra',       required: false, desc: 'Costo unitario para calcular margen',           example: '20000' },
+  { key: 'description', label: 'description', display: 'Descripción',           required: false, desc: 'Descripción breve del producto',               example: 'Blusa manga larga tela suave' },
+  { key: 'min_stock',   label: 'min_stock',   display: 'Stock mínimo',          required: false, desc: 'Cantidad mínima antes de mostrar alerta (default: 3)', example: '5' },
 ]
 
 const TEMPLATE_ROWS = [
-  { name: 'Blusa de algodón',    price: 45000, cost: 20000, description: 'Blusa manga larga tela suave', min_stock: 5 },
-  { name: 'Jeans slim fit',      price: 89000, cost: 40000, description: 'Jeans azul oscuro corte slim',  min_stock: 3 },
-  { name: 'Chaqueta de cuero',   price: 120000, cost: 55000, description: '',                              min_stock: 2 },
+  { name: 'Blusa de algodón',         price: 45000,  cost: 20000, description: 'Blusa manga larga tela suave',       min_stock: 5 },
+  { name: 'Jeans slim fit azul',      price: 89000,  cost: 40000, description: 'Jeans azul oscuro corte slim',       min_stock: 3 },
+  { name: 'Chaqueta cuero negro',     price: 120000, cost: 55000, description: 'Chaqueta cuero sintético tipo moto', min_stock: 2 },
+  { name: 'Camiseta básica blanca',   price: 28000,  cost: 10000, description: 'Camiseta algodón 100% unisex',       min_stock: 8 },
+  { name: 'Vestido floral verano',    price: 65000,  cost: 25000, description: 'Vestido flores colores vivos',       min_stock: 4 },
 ]
 
 // ── Genera y descarga el CSV plantilla ────────────────────────────────────────
@@ -172,48 +174,59 @@ export default function CsvImportModal({ onClose, onImported }) {
         {/* ── STAGE: IDLE — Instrucciones + Drop Zone ── */}
         {stage === 'idle' && (
           <>
-            {/* Instrucciones de columnas */}
-            <div className="bg-cream-50 border border-luma-border rounded-xl p-4 space-y-3">
-              <p className="text-[13px] font-semibold text-luma-text">Formato del archivo CSV</p>
-              <p className="text-[12px] text-luma-muted">
-                El archivo debe tener los encabezados en la primera fila. Los productos se importan
-                como <span className="font-semibold text-amber-600">borradores inactivos</span> para
-                que los revises antes de publicarlos.
+            {/* Paso a paso */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {[
+                { step: '1', title: 'Descarga la plantilla', desc: 'Haz clic en "Descargar plantilla CSV" abajo y ábrela en Excel o Google Sheets.' },
+                { step: '2', title: 'Llena los datos', desc: 'Completa Nombre y Precio (obligatorios). El resto es opcional.' },
+                { step: '3', title: 'Sube el archivo', desc: 'Guarda como CSV y arrastra aquí el archivo, o haz clic para buscarlo.' },
+              ].map(s => (
+                <div key={s.step} className="flex gap-3 p-3 bg-cream-50 rounded-xl border border-luma-border">
+                  <div className="w-6 h-6 gradient-teal rounded-full flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0 mt-0.5">
+                    {s.step}
+                  </div>
+                  <div>
+                    <p className="text-[12px] font-semibold text-luma-text">{s.title}</p>
+                    <p className="text-[11px] text-luma-muted mt-0.5">{s.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Campos disponibles */}
+            <div className="border border-luma-border rounded-xl overflow-hidden">
+              <div className="px-4 py-2.5 bg-cream-100 border-b border-luma-border">
+                <p className="text-[11px] font-semibold text-luma-text uppercase tracking-wide">Campos del archivo</p>
+              </div>
+              <div className="divide-y divide-luma-border">
+                {COLUMNS.map(col => (
+                  <div key={col.key} className="flex items-start gap-3 px-4 py-2.5">
+                    <span className="font-mono text-[11px] text-teal-700 font-semibold bg-teal-50 px-2 py-0.5 rounded mt-0.5 flex-shrink-0">
+                      {col.key}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[12px] font-medium text-luma-text">{col.display}</span>
+                        {col.required
+                          ? <span className="text-[10px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded">Obligatorio</span>
+                          : <span className="text-[10px] text-luma-faint bg-cream-100 px-1.5 py-0.5 rounded">Opcional</span>}
+                      </div>
+                      <p className="text-[11px] text-luma-faint mt-0.5">{col.desc}</p>
+                    </div>
+                    <span className="text-[11px] font-mono text-luma-faint flex-shrink-0 hidden sm:block">
+                      ej: {col.example}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-start gap-2 bg-teal-50 border border-teal-200 rounded-xl p-3">
+              <AlertTriangle size={14} className="text-teal-500 mt-0.5 flex-shrink-0" />
+              <p className="text-[11px] text-teal-700">
+                Los productos se importan como <strong>borradores inactivos</strong> para que los revises antes de publicarlos.
+                Después de importar podrás agregar <strong>imágenes, variantes (tallas/colores) y precios por talla</strong> desde el detalle de cada producto.
               </p>
-              <div className="overflow-hidden rounded-xl border border-luma-border">
-                <table className="w-full text-[11px]">
-                  <thead>
-                    <tr className="bg-cream-100">
-                      <th className="px-3 py-2 text-left font-semibold text-luma-text">Columna</th>
-                      <th className="px-3 py-2 text-left font-semibold text-luma-text">Requerido</th>
-                      <th className="px-3 py-2 text-left font-semibold text-luma-text">Descripción</th>
-                      <th className="px-3 py-2 text-left font-semibold text-luma-text">Ejemplo</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-luma-border">
-                    {COLUMNS.map(col => (
-                      <tr key={col.key}>
-                        <td className="px-3 py-2 font-mono text-teal-700 font-semibold">{col.label}</td>
-                        <td className="px-3 py-2">
-                          {col.required
-                            ? <span className="text-red-600 font-bold">Sí</span>
-                            : <span className="text-luma-faint">Opcional</span>}
-                        </td>
-                        <td className="px-3 py-2 text-luma-muted">{col.desc}</td>
-                        <td className="px-3 py-2 font-mono text-luma-faint">{col.example}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl p-3">
-                <AlertTriangle size={14} className="text-amber-500 mt-0.5 flex-shrink-0" />
-                <p className="text-[11px] text-amber-700">
-                  <strong>Tip:</strong> Descarga la plantilla con el botón de abajo para tener el formato
-                  correcto listo para rellenar. Las imágenes y variantes se gestionan después desde el
-                  detalle de cada producto.
-                </p>
-              </div>
             </div>
 
             {/* Drop zone */}
@@ -222,25 +235,25 @@ export default function CsvImportModal({ onClose, onImported }) {
               onDragLeave={() => setDragging(false)}
               onDrop={onDrop}
               onClick={() => fileInputRef.current?.click()}
-              className={`border-2 border-dashed rounded-2xl p-10 flex flex-col items-center gap-3 cursor-pointer transition-all ${
+              className={`border-2 border-dashed rounded-2xl p-8 flex flex-col items-center gap-3 cursor-pointer transition-all ${
                 dragging
                   ? 'border-teal-400 bg-teal-50 scale-[1.01]'
                   : 'border-luma-border hover:border-teal-400 hover:bg-teal-50/50'
               }`}
             >
-              <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all ${
+              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${
                 dragging ? 'bg-teal-100' : 'bg-cream-100'
               }`}>
-                <FileText size={26} className={dragging ? 'text-teal-500' : 'text-luma-faint'} />
+                <FileText size={22} className={dragging ? 'text-teal-500' : 'text-luma-faint'} />
               </div>
               <div className="text-center">
-                <p className="text-[14px] font-semibold text-luma-text">
+                <p className="text-[13px] font-semibold text-luma-text">
                   {dragging ? 'Suelta el archivo aquí' : 'Arrastra tu archivo CSV aquí'}
                 </p>
                 <p className="text-[12px] text-luma-muted mt-1">
                   o <span className="text-teal-600 font-semibold underline">haz clic para seleccionarlo</span>
                 </p>
-                <p className="text-[11px] text-luma-faint mt-2">Solo archivos .csv · Codificación UTF-8</p>
+                <p className="text-[11px] text-luma-faint mt-1">Solo archivos .csv</p>
               </div>
             </div>
             <input
