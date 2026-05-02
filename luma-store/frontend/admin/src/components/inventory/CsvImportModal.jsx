@@ -41,21 +41,49 @@ function downloadTemplate() {
   URL.revokeObjectURL(url)
 }
 
+// ── Divide una línea CSV respetando valores entre comillas ────────────────────
+function splitCsvLine(line, delimiter) {
+  const result = []
+  let current = ''
+  let inQuotes = false
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') { current += '"'; i++ } // comilla escapada ""
+      else inQuotes = !inQuotes
+    } else if (ch === delimiter && !inQuotes) {
+      result.push(current.trim())
+      current = ''
+    } else {
+      current += ch
+    }
+  }
+  result.push(current.trim())
+  return result
+}
+
 // ── Parsea el CSV en el frontend para preview ─────────────────────────────────
 function parseCsv(text) {
-  const lines = text.trim().split('\n')
+  // 1. Quitar BOM (Excel lo añade al abrir/guardar)
+  text = text.replace(/^﻿/, '')
+  // 2. Normalizar saltos de línea (Windows \r\n → \n)
+  const lines = text.trim().split(/\r?\n/).filter(l => l.trim())
   if (lines.length < 2) return { headers: [], rows: [], errors: [] }
-  const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''))
+  // 3. Detectar separador: cuenta comas vs punto y coma en la cabecera
+  const headerLine = lines[0]
+  const delim = (headerLine.match(/;/g) || []).length > (headerLine.match(/,/g) || []).length ? ';' : ','
+  // 4. Extraer cabeceras
+  const headers = splitCsvLine(headerLine, delim).map(h => h.replace(/^"|"$/g, ''))
   const rows = []
   const errors = []
   for (let i = 1; i < lines.length; i++) {
-    const vals = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''))
+    const vals = splitCsvLine(lines[i], delim).map(v => v.replace(/^"|"$/g, ''))
     const row = {}
     headers.forEach((h, idx) => { row[h] = vals[idx] ?? '' })
     const rowErrors = []
-    if (!row.name?.trim()) rowErrors.push('Nombre requerido')
-    if (!row.price || isNaN(Number(row.price))) rowErrors.push('Precio inválido')
-    if (row.cost && isNaN(Number(row.cost))) rowErrors.push('Costo inválido')
+    if (!row.name?.trim())                             rowErrors.push('Nombre requerido')
+    if (!row.price || isNaN(Number(row.price)))        rowErrors.push('Precio inválido')
+    if (row.cost      && isNaN(Number(row.cost)))      rowErrors.push('Costo inválido')
     if (row.min_stock && isNaN(Number(row.min_stock))) rowErrors.push('min_stock inválido')
     rows.push({ ...row, _line: i + 1, _errors: rowErrors })
     if (rowErrors.length) errors.push({ line: i + 1, errors: rowErrors })

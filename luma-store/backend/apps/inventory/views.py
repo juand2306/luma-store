@@ -54,24 +54,30 @@ class ProductImageViewSet(viewsets.ModelViewSet):
 
 
 class CategoryViewSet(viewsets.ModelViewSet):
-    queryset = Category.objects.filter(parent=None).prefetch_related(
-        "subcategories"
-    ).order_by("order", "name")
     serializer_class = CategorySerializer
     permission_classes = [IsOwnerOrAdmin]
     filter_backends = [filters.SearchFilter]
     search_fields = ["name"]
 
+    def get_queryset(self):
+        # list: solo categorías raíz activas (con subcategorías precargadas)
+        if self.action == "list":
+            return Category.objects.filter(parent=None, is_active=True).prefetch_related(
+                "subcategories"
+            ).order_by("order", "name")
+        # retrieve / update / partial_update / destroy: TODAS las categorías
+        return Category.objects.all()
+
     def destroy(self, request, *args, **kwargs):
         category = self.get_object()
         if category.products.filter(status="active").exists():
             return Response(
-                {"detail": "No se puede eliminar una categoría con productos activos."},
+                {"detail": "No se puede eliminar: la categoría tiene productos activos."},
                 status=status.HTTP_400_BAD_REQUEST
             )
         category.is_active = False
         category.save()
-        return Response({"detail": "Categoría desactivada."}, status=status.HTTP_200_OK)
+        return Response({"detail": "Categoría eliminada."}, status=status.HTTP_200_OK)
 
 
 class ProductViewSet(viewsets.ModelViewSet):

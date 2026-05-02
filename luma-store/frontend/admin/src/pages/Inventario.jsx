@@ -1088,12 +1088,13 @@ function CategoryModal({ open, onClose }) {
   }
 
   const handleDelete = async (id) => {
+    if (!window.confirm('¿Eliminar esta categoría? Esta acción no se puede deshacer.')) return
     try {
       await svc.deleteCategory(id)
       toast.success('Categoría eliminada')
       load()
     } catch (e) {
-      toast.error(e.response?.data?.detail || 'No se puede eliminar — tiene productos activos')
+      toast.error(e.response?.data?.detail || 'No se puede eliminar')
     }
   }
 
