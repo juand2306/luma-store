@@ -1,6 +1,5 @@
 from rest_framework import serializers
 from .models import CashSession, CashMovement
-from django.db.models import Sum
 
 
 class CashMovementSerializer(serializers.ModelSerializer):
@@ -38,7 +37,7 @@ class CashSessionSerializer(serializers.ModelSerializer):
         model = CashSession
         fields = [
             "id", "date", "opening_amount", "closing_amount",
-            "counted_amount", "difference", "status", "note",
+            "counted_amount", "difference", "status", "auto_closed", "note",
             "opened_by", "opened_by_name", "closed_by", "closed_by_name",
             "opened_at", "closed_at",
             "movements", "total_income", "total_expense",
@@ -46,7 +45,7 @@ class CashSessionSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             "closing_amount", "counted_amount", "difference",
-            "opened_by", "closed_by", "opened_at", "closed_at", "status"
+            "opened_by", "closed_by", "opened_at", "closed_at", "status", "auto_closed"
         ]
 
     def get_opened_by_name(self, obj):
@@ -55,26 +54,32 @@ class CashSessionSerializer(serializers.ModelSerializer):
     def get_closed_by_name(self, obj):
         return obj.closed_by.get_full_name() if obj.closed_by else None
 
+    def _movement_totals(self, obj):
+        """Suma ingresos/egresos/devoluciones usando el prefetch cache — 0 queries extra."""
+        if not hasattr(obj, '_cached_totals'):
+            income = expense = refund = 0.0
+            for m in obj.movements.all():
+                if m.type == "income":
+                    income += float(m.amount)
+                elif m.type == "expense":
+                    expense += float(m.amount)
+                elif m.type == "refund":
+                    refund += float(m.amount)
+            obj._cached_totals = (income, expense, refund)
+        return obj._cached_totals
+
     def get_total_income(self, obj):
-        return obj.movements.filter(type="income").aggregate(
-            t=Sum("amount"))["t"] or 0
+        return self._movement_totals(obj)[0]
 
     def get_total_expense(self, obj):
-        return obj.movements.filter(type="expense").aggregate(
-            t=Sum("amount"))["t"] or 0
+        return self._movement_totals(obj)[1]
 
     def get_total_refund(self, obj):
-        return obj.movements.filter(type="refund").aggregate(
-            t=Sum("amount"))["t"] or 0
+        return self._movement_totals(obj)[2]
 
     def get_current_cash(self, obj):
-        income = obj.movements.filter(type="income").aggregate(
-            t=Sum("amount"))["t"] or 0
-        expense = obj.movements.filter(type="expense").aggregate(
-            t=Sum("amount"))["t"] or 0
-        refund = obj.movements.filter(type="refund").aggregate(
-            t=Sum("amount"))["t"] or 0
-        return float(obj.opening_amount) + float(income) - float(expense) - float(refund)
+        income, expense, refund = self._movement_totals(obj)
+        return float(obj.opening_amount) + income - expense - refund
 
     def create(self, validated_data):
         request = self.context.get("request")
@@ -92,7 +97,7 @@ class CashSessionListSerializer(serializers.ModelSerializer):
         model = CashSession
         fields = [
             "id", "date", "opening_amount", "closing_amount",
-            "counted_amount", "difference", "status", "note",
+            "counted_amount", "difference", "status", "auto_closed", "note",
             "opened_by_name", "closed_by_name",
             "opened_at", "closed_at",
         ]

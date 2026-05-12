@@ -3,6 +3,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework_simplejwt.views import TokenObtainPairView
 from django.contrib.auth import get_user_model
 
@@ -54,6 +55,7 @@ class StoreConfigView(generics.RetrieveUpdateAPIView):
     """Leer y actualizar configuración de la tienda. Solo Owner."""
     serializer_class = StoreConfigSerializer
     permission_classes = [IsOwner]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_object(self):
         return StoreConfig.get_config()

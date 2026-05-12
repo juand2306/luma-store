@@ -138,6 +138,33 @@ REST_FRAMEWORK = {
         "rest_framework.filters.SearchFilter",
         "rest_framework.filters.OrderingFilter",
     ],
+    # ── Paginación ────────────────────────────────────────
+    # Todas las listas devuelven { count, next, previous, results }.
+    # Las vistas que NO deben paginar deben declarar pagination_class = None.
+    "DEFAULT_PAGINATION_CLASS": "config.pagination.StandardPagination",
+    "PAGE_SIZE": 50,
+    # ── Throttling ────────────────────────────────────────
+    # Límites conservadores; ajustar según tráfico real en producción.
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "120/hour",   # endpoints públicos del portal
+        "user": "2000/hour",  # usuarios autenticados del panel admin
+    },
+}
+
+# ─── CACHÉ ───────────────────────────────────────────────
+# LocMemCache en desarrollo. En producción reemplazar con Redis:
+#   CACHE_BACKEND = "django_redis.cache.RedisCache"
+#   CACHE_LOCATION = "redis://127.0.0.1:6379/1"
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "luma-store-cache",
+        "TIMEOUT": 300,  # 5 minutos
+    }
 }
 
 # ─── CONFIGURACIÓN DE TIENDA (desde .env) ────────────────

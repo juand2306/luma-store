@@ -4,17 +4,15 @@ import { Zap, Search, ShoppingCart, Plus, Minus, CreditCard, CheckCircle, X, Use
 import { useAuth } from '../store/authContext'
 import { Link } from 'react-router-dom'
 import * as svc from '../api/services'
+import { usePaymentMethods } from '../hooks/usePaymentMethods'
 
 const fmt = (n) => `$${Number(n || 0).toLocaleString('es-CO')}`
 
-const PAYMENT_METHODS = [
-  { val: 'cash',      label: 'Efectivo',      icon: '💵' },
-  { val: 'transfer',  label: 'Transferencia', icon: '🏦' },
-  { val: 'nequi',     label: 'Nequi',         icon: '🟣' },
-  { val: 'daviplata', label: 'Daviplata',     icon: '🔴' },
-  { val: 'debit',     label: 'Débito',        icon: '💳' },
-  { val: 'credit',    label: 'Crédito',       icon: '💳' },
-]
+// Iconos de respaldo por key
+const METHOD_ICONS = {
+  cash: '💵', transfer: '🏦', nequi: '🟣', daviplata: '🔴',
+  debit: '💳', credit: '💳', other: '💰',
+}
 
 export default function VentaRapida() {
   const { user } = useAuth()
@@ -26,6 +24,7 @@ export default function VentaRapida() {
   const [received, setReceived] = useState('')
   const [saving,   setSaving]   = useState(false)
   const [done,     setDone]     = useState(null)
+  const { enabledMethods } = usePaymentMethods()
   // Customer
   const [custQuery,   setCustQuery]   = useState('')
   const [custResults, setCustResults] = useState([])
@@ -343,17 +342,17 @@ export default function VentaRapida() {
             <div>
               <p className="text-[12px] font-semibold text-luma-text mb-2">Método de pago</p>
               <div className="grid grid-cols-3 gap-2">
-                {PAYMENT_METHODS.map(m => (
+                {enabledMethods.map(({ key, label }) => (
                   <button
-                    key={m.val}
-                    onClick={() => setMethod(m.val)}
+                    key={key}
+                    onClick={() => setMethod(key)}
                     className={`py-3 rounded-xl text-[12px] font-semibold transition-all border
-                      ${method === m.val
+                      ${method === key
                         ? 'bg-teal-500 text-white border-teal-500 shadow-sm'
                         : 'bg-cream-100 text-luma-text border-luma-border hover:bg-cream-200'}`}
                   >
-                    <span className="block text-lg mb-0.5">{m.icon}</span>
-                    {m.label}
+                    <span className="block text-lg mb-0.5">{METHOD_ICONS[key] || '💰'}</span>
+                    {label}
                   </button>
                 ))}
               </div>

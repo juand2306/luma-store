@@ -15,8 +15,9 @@ class CategorySerializer(serializers.ModelSerializer):
         ]
 
     def get_subcategories(self, obj):
-        children = obj.subcategories.filter(is_active=True)
-        return CategorySerializer(children, many=True).data
+        # Filtra en Python usando el prefetch cache — evita N+1 por cada categoría
+        children = [s for s in obj.subcategories.all() if s.is_active]
+        return CategorySerializer(children, many=True, context=self.context).data
 
 
 class ProductImageSerializer(serializers.ModelSerializer):
@@ -71,10 +72,12 @@ class ProductSerializer(serializers.ModelSerializer):
         ]
 
     def get_total_stock(self, obj):
-        return sum(v.stock for v in obj.variants.filter(is_active=True))
+        # Usa prefetch cache — no genera queries adicionales
+        return sum(v.stock for v in obj.variants.all() if v.is_active)
 
     def get_active_variants_count(self, obj):
-        return obj.variants.filter(is_active=True).count()
+        # Usa prefetch cache — no genera queries adicionales
+        return sum(1 for v in obj.variants.all() if v.is_active)
 
 
 class ProductListSerializer(serializers.ModelSerializer):
@@ -95,13 +98,17 @@ class ProductListSerializer(serializers.ModelSerializer):
         ]
 
     def get_total_stock(self, obj):
-        return sum(v.stock for v in obj.variants.filter(is_active=True))
+        # Usa prefetch cache — no genera queries adicionales
+        return sum(v.stock for v in obj.variants.all() if v.is_active)
 
     def get_active_variants_count(self, obj):
-        return obj.variants.filter(is_active=True).count()
+        # Usa prefetch cache — no genera queries adicionales
+        return sum(1 for v in obj.variants.all() if v.is_active)
 
     def get_main_image(self, obj):
-        img = obj.images.filter(is_main=True).first() or obj.images.first()
+        # Usa prefetch cache — no genera queries adicionales
+        imgs = list(obj.images.all())
+        img = next((i for i in imgs if i.is_main), None) or (imgs[0] if imgs else None)
         if img and img.image:
             request = self.context.get("request")
             if request:
@@ -132,17 +139,18 @@ class StockMovementSerializer(serializers.ModelSerializer):
         if request and request.user.is_authenticated:
             validated_data["created_by"] = request.user
         movement = super().create(validated_data)
-        # Aplicar movimiento al stock
         variant = movement.variant
         variant.stock = max(0, variant.stock + movement.quantity)
         variant.save(update_fields=["stock"])
-        # Auto-actualizar estado del producto
-        product = variant.product
-        has_stock = product.variants.filter(is_active=True, stock__gt=0).exists()
-        if not has_stock and product.status != "out":
-            Product.objects.filter(pk=product.pk).update(status="out")
-        elif has_stock and product.status == "out":
-            Product.objects.filter(pk=product.pk).update(status="active")
+        # Use product_id FK field (no extra DB query) then check siblings in one query
+        product_id = variant.product_id
+        has_stock = ProductVariant.objects.filter(
+            product_id=product_id, is_active=True, stock__gt=0
+        ).exists()
+        if not has_stock:
+            Product.objects.filter(pk=product_id, status="active").update(status="out")
+        else:
+            Product.objects.filter(pk=product_id, status="out").update(status="active")
         return movement
 
 
@@ -180,15 +188,18 @@ class PublicProductSerializer(serializers.ModelSerializer):
         ]
 
     def get_variants(self, obj):
-        """Solo devuelve variantes activas (incluye agotadas para mostrar la variante pero con stock=0)."""
-        active = obj.variants.filter(is_active=True)
+        """Solo devuelve variantes activas — usa prefetch cache."""
+        active = [v for v in obj.variants.all() if v.is_active]
         return PublicProductVariantSerializer(active, many=True).data
 
     def get_total_stock(self, obj):
-        return sum(v.stock for v in obj.variants.filter(is_active=True))
+        # Usa prefetch cache — no genera queries adicionales
+        return sum(v.stock for v in obj.variants.all() if v.is_active)
 
     def get_main_image(self, obj):
-        img = obj.images.filter(is_main=True).first() or obj.images.first()
+        # Usa prefetch cache — no genera queries adicionales
+        imgs = list(obj.images.all())
+        img = next((i for i in imgs if i.is_main), None) or (imgs[0] if imgs else None)
         if img and img.image:
             request = self.context.get("request")
             if request:

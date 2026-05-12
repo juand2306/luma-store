@@ -9,6 +9,7 @@ import Inventario from './pages/Inventario'
 import Caja from './pages/Caja'
 import Ventas from './pages/Ventas'
 import Pedidos from './pages/Pedidos'
+import Compras from './pages/Compras'
 import Clientes from './pages/Clientes'
 import Reportes from './pages/Reportes'
 import Configuracion from './pages/Configuracion'
@@ -60,6 +61,7 @@ function AppRoutes() {
         <Route path="/caja"            element={<RoleRoute allow={['owner','admin']}><Caja /></RoleRoute>} />
         <Route path="/ventas"          element={<RoleRoute allow={['owner','admin']}><Ventas /></RoleRoute>} />
         <Route path="/pedidos"         element={<RoleRoute allow={['owner','admin']}><Pedidos /></RoleRoute>} />
+        <Route path="/compras"         element={<RoleRoute allow={['owner','admin']}><Compras /></RoleRoute>} />
         <Route path="/clientes"        element={<RoleRoute allow={['owner','admin']}><Clientes /></RoleRoute>} />
         <Route path="/reportes"        element={<Reportes />} />
         <Route path="/configuracion"   element={<RoleRoute allow={['owner']}><Configuracion /></RoleRoute>} />

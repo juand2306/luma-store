@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import toast from 'react-hot-toast'
 import {
   Plus, Search, ShoppingCart, RefreshCw, X, Minus,
@@ -6,22 +6,14 @@ import {
 } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import Modal from '../components/ui/Modal'
-import { PageLoader, EmptyState } from '../components/ui/Misc'
+import { PageLoader, EmptyState, Pagination } from '../components/ui/Misc'
 import * as svc from '../api/services'
+import { usePaymentMethods } from '../hooks/usePaymentMethods'
 
 const fmt = (n) => `$${Number(n || 0).toLocaleString('es-CO')}`
 
-const PAYMENT_LABELS = {
-  cash:     'Efectivo',
-  transfer: 'Transferencia',
-  card:     'Tarjeta',
-  nequi:    'Nequi',
-  daviplata:'Daviplata',
-  mixed:    'Mixto',
-}
-
 // ── Fila de venta en historial ────────────────────────────────────────────────
-function SaleRow({ sale, onView }) {
+function SaleRow({ sale, onView, labelsMap = {} }) {
   return (
     <tr className="cursor-pointer hover:bg-cream-50 transition-colors" onClick={() => onView(sale)}>
       <td>
@@ -35,7 +27,7 @@ function SaleRow({ sale, onView }) {
       </td>
       <td className="hidden md:table-cell">
         <span className="text-[10px] uppercase tracking-wide bg-cream-200 px-2 py-0.5 rounded font-semibold">
-          {PAYMENT_LABELS[sale.payment_method] || sale.payment_method}
+          {labelsMap[sale.payment_method] || sale.payment_method}
         </span>
       </td>
       <td className="font-bold text-[13px] text-teal-700">{fmt(sale.total)}</td>
@@ -295,6 +287,7 @@ function NewSaleModal({ onSaved, onClose }) {
   const [newCustPhone, setNewCustPhone] = useState('')
   const [savingCust, setSavingCust]     = useState(false)
   const searchRef = useRef(null)
+  const { enabledMethods } = usePaymentMethods()
 
   // ── Búsqueda optimizada de productos (endpoint POS) ─────────────────────────
   useEffect(() => {
@@ -621,12 +614,12 @@ function NewSaleModal({ onSaved, onClose }) {
           <div>
             <label className="text-[12px] font-semibold text-luma-text mb-1.5 block">Método de pago</label>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {Object.entries(PAYMENT_LABELS).filter(([k]) => k !== 'mixed').map(([val, label]) => (
+              {enabledMethods.map(({ key, label }) => (
                 <button
-                  key={val}
-                  onClick={() => setMethod(val)}
+                  key={key}
+                  onClick={() => setMethod(key)}
                   className={`py-2.5 rounded-xl text-[12px] font-semibold transition-all border
-                    ${method === val
+                    ${method === key
                       ? 'bg-teal-500 text-white border-teal-500'
                       : 'bg-cream-100 text-luma-text border-luma-border hover:bg-cream-200'}`}
                 >
@@ -670,7 +663,7 @@ function NewSaleModal({ onSaved, onClose }) {
 }
 
 // ── Modal: Detalle de venta ───────────────────────────────────────────────────
-function SaleDetailModal({ sale, onClose }) {
+function SaleDetailModal({ sale, onClose, labelsMap = {} }) {
   return (
     <Modal open onClose={onClose} title={`Venta ${sale.number}`} size="md">
       <div className="space-y-4">
@@ -679,7 +672,7 @@ function SaleDetailModal({ sale, onClose }) {
             ['Fecha',    new Date(sale.created_at).toLocaleString('es-CO')],
             ['Vendedor', sale.sold_by_name || '—'],
             ['Cliente',  sale.customer_name || 'Sin cliente'],
-            ['Pago',     PAYMENT_LABELS[sale.payment_method] || sale.payment_method],
+            ['Pago',     labelsMap[sale.payment_method] || sale.payment_method],
           ].map(([k, v]) => (
             <div key={k} className="bg-cream-100 rounded-xl p-3">
               <p className="text-luma-faint text-[10px] uppercase tracking-wide">{k}</p>
@@ -735,18 +728,31 @@ function SaleDetailModal({ sale, onClose }) {
 }
 
 // ── Página principal ──────────────────────────────────────────────────────────
+const PAGE_SIZE_VENTAS = 50
+
 export default function Ventas() {
-  const [sales,    setSales]    = useState([])
-  const [loading,  setLoading]  = useState(true)
-  const [search,   setSearch]   = useState('')
-  const [filter,   setFilter]   = useState('')
-  const [soldBy,   setSoldBy]   = useState('')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo,   setDateTo]   = useState('')
-  const [sellers,  setSellers]  = useState([])
+  const [sales,       setSales]       = useState([])
+  const [loading,     setLoading]     = useState(true)
+  const [page,        setPage]        = useState(1)
+  const [totalCount,  setTotalCount]  = useState(0)
+  const [stats,       setStats]       = useState({ total_revenue: 0, avg_ticket: 0, count: 0 })
+  const [inputSearch, setInputSearch] = useState('')  // valor inmediato del input
+  const [search,      setSearch]      = useState('')  // valor debounced (dispara API)
+  const [filter,      setFilter]      = useState('')
+  const [soldBy,      setSoldBy]      = useState('')
+  const [dateFrom,    setDateFrom]    = useState('')
+  const [dateTo,      setDateTo]      = useState('')
+  const [sellers,     setSellers]     = useState([])
   const [newModal,    setNewModal]    = useState(false)
   const [viewSale,    setViewSale]    = useState(null)
   const [returnModal, setReturnModal] = useState(false)
+  const { methods, labelsMap } = usePaymentMethods()
+
+  // Debounce: espera 350 ms tras dejar de tipear antes de disparar la API
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(inputSearch), 350)
+    return () => clearTimeout(t)
+  }, [inputSearch])
 
   // Cargar lista de vendedores (para filtro)
   useEffect(() => {
@@ -755,30 +761,39 @@ export default function Ventas() {
       .catch(() => {})
   }, [])
 
-  const load = useCallback(async () => {
+  // Params compartidos para load y loadStats
+  const filterParams = useMemo(() => {
+    const p = {}
+    if (search)   p.search         = search
+    if (filter)   p.payment_method = filter
+    if (soldBy)   p.sold_by        = soldBy
+    if (dateFrom) p.from_date      = dateFrom
+    if (dateTo)   p.to_date        = dateTo
+    return p
+  }, [search, filter, soldBy, dateFrom, dateTo])
+
+  // load(p) — carga la página p con los filtros actuales
+  const load = useCallback(async (p = 1) => {
+    setPage(p)
     setLoading(true)
     try {
-      const params = {}
-      if (filter)   params.payment_method = filter
-      if (soldBy)   params.sold_by        = soldBy
-      if (dateFrom) params.from_date      = dateFrom
-      if (dateTo)   params.to_date        = dateTo
-      const { data } = await svc.getSales(params)
+      const { data } = await svc.getSales({ ...filterParams, page: p, page_size: PAGE_SIZE_VENTAS })
       setSales(data?.results ?? data ?? [])
+      setTotalCount(data?.count ?? 0)
     } catch { toast.error('Error cargando ventas') }
     finally { setLoading(false) }
-  }, [filter, soldBy, dateFrom, dateTo])
+  }, [filterParams])
 
-  useEffect(() => { load() }, [load])
+  // loadStats — KPIs agregados del servidor (reflejan TODOS los registros con los filtros)
+  const loadStats = useCallback(async () => {
+    try {
+      const { data } = await svc.getSalesStats(filterParams)
+      setStats(data)
+    } catch {}
+  }, [filterParams])
 
-  const filtered = search
-    ? sales.filter(s =>
-        s.number?.toLowerCase().includes(search.toLowerCase()) ||
-        s.customer_name?.toLowerCase().includes(search.toLowerCase()))
-    : sales
-
-  const totalRevenue = filtered.reduce((s, x) => s + Number(x.total), 0)
-  const avgTicket    = filtered.length ? totalRevenue / filtered.length : 0
+  useEffect(() => { load(1)    }, [load])
+  useEffect(() => { loadStats() }, [loadStats])
 
   if (loading) return <PageLoader />
 
@@ -788,7 +803,7 @@ export default function Ventas() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h2 className="page-title">Ventas</h2>
-          <p className="text-[13px] text-luma-muted mt-0.5">{filtered.length} registros</p>
+          <p className="text-[13px] text-luma-muted mt-0.5">{totalCount.toLocaleString('es-CO')} registros</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" icon={RotateCcw} onClick={() => setReturnModal(true)}>
@@ -798,25 +813,25 @@ export default function Ventas() {
             <span className="hidden sm:inline">Nueva venta</span>
             <span className="sm:hidden">Nueva</span>
           </Button>
-          <button onClick={load} className="btn-ghost" title="Actualizar">
+          <button onClick={() => { load(1); loadStats() }} className="btn-ghost" title="Actualizar">
             <RefreshCw size={15} />
           </button>
         </div>
       </div>
 
-      {/* KPI Strip */}
+      {/* KPI Strip — valores reales del servidor (incluyen todos los registros, no solo la página) */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="card p-4">
           <p className="section-label">Total ingresos</p>
-          <p className="text-xl font-bold text-teal-600 mt-1">{fmt(totalRevenue)}</p>
+          <p className="text-xl font-bold text-teal-600 mt-1">{fmt(stats.total_revenue)}</p>
         </div>
         <div className="card p-4">
           <p className="section-label">N de transacciones</p>
-          <p className="text-xl font-bold text-luma-text mt-1">{filtered.length}</p>
+          <p className="text-xl font-bold text-luma-text mt-1">{stats.count.toLocaleString('es-CO')}</p>
         </div>
         <div className="card p-4">
           <p className="section-label">Ticket promedio</p>
-          <p className="text-xl font-bold text-luma-text mt-1">{fmt(avgTicket)}</p>
+          <p className="text-xl font-bold text-luma-text mt-1">{fmt(stats.avg_ticket)}</p>
         </div>
       </div>
 
@@ -825,16 +840,16 @@ export default function Ventas() {
         <div className="relative flex-1 min-w-[180px]">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-luma-faint pointer-events-none z-10" />
           <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
+            value={inputSearch}
+            onChange={e => setInputSearch(e.target.value)}
             placeholder="Buscar por número o cliente..."
             className="input-base !pl-9"
           />
         </div>
         <select value={filter} onChange={e => setFilter(e.target.value)} className="input-base w-full sm:w-40">
           <option value="">Todos los métodos</option>
-          {Object.entries(PAYMENT_LABELS).map(([k, v]) => (
-            <option key={k} value={k}>{v}</option>
+          {methods.map(({ key, label }) => (
+            <option key={key} value={key}>{label}</option>
           ))}
         </select>
         {sellers.length > 0 && (
@@ -853,7 +868,7 @@ export default function Ventas() {
 
       {/* Tabla */}
       <div className="card overflow-hidden">
-        {filtered.length === 0 ? (
+        {sales.length === 0 && !loading ? (
           <EmptyState
             icon={ShoppingCart}
             title="Sin ventas"
@@ -861,28 +876,38 @@ export default function Ventas() {
             action={<Button variant="teal" icon={Plus} size="sm" onClick={() => setNewModal(true)}>Nueva venta</Button>}
           />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="luma-table">
-              <thead>
-                <tr>
-                  <th>Numero</th>
-                  <th className="hidden sm:table-cell">Cliente</th>
-                  <th className="hidden md:table-cell">Metodo pago</th>
-                  <th>Total</th>
-                  <th className="hidden lg:table-cell">Vendedor</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map(s => <SaleRow key={s.id} sale={s} onView={setViewSale} />)}
-              </tbody>
-            </table>
-          </div>
+          <>
+            <div className="overflow-x-auto">
+              <table className="luma-table">
+                <thead>
+                  <tr>
+                    <th>Numero</th>
+                    <th className="hidden sm:table-cell">Cliente</th>
+                    <th className="hidden md:table-cell">Metodo pago</th>
+                    <th>Total</th>
+                    <th className="hidden lg:table-cell">Vendedor</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sales.map(s => <SaleRow key={s.id} sale={s} onView={setViewSale} labelsMap={labelsMap} />)}
+                </tbody>
+              </table>
+            </div>
+            <div className="px-5 py-3 border-t border-luma-border">
+              <Pagination
+                page={page}
+                totalCount={totalCount}
+                pageSize={PAGE_SIZE_VENTAS}
+                onPageChange={load}
+              />
+            </div>
+          </>
         )}
       </div>
 
-      {returnModal && <ReturnModal onSaved={load} onClose={() => setReturnModal(false)} />}
-      {newModal && <NewSaleModal onSaved={load} onClose={() => setNewModal(false)} />}
-      {viewSale && <SaleDetailModal sale={viewSale} onClose={() => setViewSale(null)} />}
+      {returnModal && <ReturnModal onSaved={() => { load(1); loadStats() }} onClose={() => setReturnModal(false)} />}
+      {newModal && <NewSaleModal onSaved={() => { load(1); loadStats() }} onClose={() => setNewModal(false)} />}
+      {viewSale && <SaleDetailModal sale={viewSale} onClose={() => setViewSale(null)} labelsMap={labelsMap} />}
     </div>
   )
 }

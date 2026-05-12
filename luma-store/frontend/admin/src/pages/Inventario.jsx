@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import {
   Plus, Search, Filter, RefreshCw,
   Package, AlertTriangle, MoreHorizontal,
   Edit2, Trash2, Eye, EyeOff, Tag, Box, TrendingDown, ShoppingBag,
-  Upload, Copy, PowerOff, Zap, X, ChevronDown
+  Upload, Copy, PowerOff, Zap, X, ChevronDown, CheckCircle, ArrowRight
 } from 'lucide-react'
 import api from '../api/client'
 
@@ -13,7 +13,7 @@ import { Button } from '../components/ui/Button'
 import { Badge, StatusBadge, CategoryBadge } from '../components/ui/Badge'
 import { Input, Select } from '../components/ui/Input'
 import Modal from '../components/ui/Modal'
-import { PageLoader, SkeletonRow, EmptyState, ProgressBar, ConfirmDialog } from '../components/ui/Misc'
+import { PageLoader, SkeletonRow, EmptyState, ProgressBar, ConfirmDialog, Pagination } from '../components/ui/Misc'
 import * as svc from '../api/services'
 import ProductForm from '../components/inventory/ProductForm'
 import ProductDetailModal from '../components/inventory/ProductDetailModal'
@@ -139,28 +139,40 @@ function ProductRow({ product, categories, onView, onEdit, onVariants, onMovemen
 }
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
+const PAGE_SIZE = 50
+
 export default function Inventario() {
   const location = useLocation()
 
   const [products,   setProducts]   = useState([])
   const [categories, setCategories] = useState([])
   const [loading,    setLoading]    = useState(true)
-  const [search,        setSearch]        = useState('')
+  const [inputSearch,   setInputSearch]   = useState('')  // valor inmediato del input
+  const [search,        setSearch]        = useState('')  // debounced (dispara filterParams)
   const [filterCat,     setFilterCat]     = useState('')
   const [filterStatus,  setFilterStatus]  = useState('')
   const [filterVisible, setFilterVisible] = useState('') // '' | 'visible' | 'hidden'
   const [filterLowStock,setFilterLowStock]= useState(false)
   const [page,          setPage]          = useState(1)
-  const PAGE_SIZE = 20
+  const [totalCount,    setTotalCount]    = useState(0)
 
-  const [editProduct,      setEditProduct]      = useState(null)  // null=closed, {}=new, product=edit
-  const [detailProduct,    setDetailProduct]    = useState(null)  // vista detalle
+  // KPIs del catálogo completo — actualizados desde el endpoint /stats/
+  const [stats, setStats] = useState({ total: 0, out_of_stock: 0, low_stock: 0, total_value: 0 })
+
+  const [editProduct,      setEditProduct]      = useState(null)
+  const [detailProduct,    setDetailProduct]    = useState(null)
   const [variantProduct,   setVariantProduct]   = useState(null)
   const [movementProduct,  setMovementProduct]  = useState(null)
   const [confirmDelete,    setConfirmDelete]     = useState(null)
   const [showCatModal,     setShowCatModal]      = useState(false)
   const [showCsvModal,     setShowCsvModal]      = useState(false)
-  const [activeTab,        setActiveTab]         = useState('catalog') // catalog | alerts | prediction
+  const [activeTab,        setActiveTab]         = useState('catalog')
+
+  // Debounce: 350 ms tras dejar de tipear antes de disparar filterParams → load
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(inputSearch), 350)
+    return () => clearTimeout(t)
+  }, [inputSearch])
 
   // Auto-open product detail when navigating from Dashboard stock alerts
   useEffect(() => {
@@ -172,21 +184,39 @@ export default function Inventario() {
       .catch(() => {})
   }, [location.state?.openProductId])
 
-  // KPIs
-  const totalValue   = products.reduce((s, p) => s + p.total_stock * Number(p.price), 0)
-  const bestSeller   = [...products].sort((a, b) => b.total_stock - a.total_stock)[0]
-  const outOfStock   = products.filter(p => p.status === 'out').length
-  const lowStock     = products.filter(p => p.total_stock > 0 && p.total_stock <= (p.min_stock || 3)).length
+  // Construye los params de filtro (compartido por load y loadStats)
+  const filterParams = useMemo(() => {
+    const p = {}
+    if (search)        p.search     = search
+    if (filterCat)     p.category   = filterCat
+    if (filterStatus)  p.status     = filterStatus
+    if (filterVisible === 'visible') p.is_visible = true
+    if (filterVisible === 'hidden')  p.is_visible = false
+    if (filterLowStock) p.low_stock = 'true'
+    return p
+  }, [search, filterCat, filterStatus, filterVisible, filterLowStock])
 
-  const load = useCallback(async () => {
+  // Carga los KPIs del catálogo completo (sin paginar) — separado de la lista
+  const loadStats = useCallback(async () => {
+    try {
+      const { data } = await svc.getProductStats(filterParams)
+      setStats(data)
+    } catch {}
+  }, [filterParams])
+
+  // Carga una página de productos + categorías
+  const load = useCallback(async (p = 1) => {
+    setPage(p)
     setLoading(true)
     try {
+      const params = { ...filterParams, page: p, page_size: PAGE_SIZE }
       const [prodRes, catRes] = await Promise.all([
-        svc.getProducts({ search, category: filterCat, status: filterStatus }),
+        svc.getProducts(params),
         svc.getCategories(),
       ])
       const prods = prodRes.data?.results ?? prodRes.data
       setProducts(Array.isArray(prods) ? prods : [])
+      setTotalCount(prodRes.data?.count ?? 0)
       const cats = catRes.data?.results ?? catRes.data
       setCategories(Array.isArray(cats) ? cats : [])
     } catch {
@@ -194,29 +224,17 @@ export default function Inventario() {
     } finally {
       setLoading(false)
     }
-  }, [search, filterCat, filterStatus])
+  }, [filterParams])
 
-  useEffect(() => { load() }, [load])
-
-  // Filter client-side for instant feedback
-  const filtered = useMemo(() => {
-    let list = products
-    if (search)         list = list.filter(p => p.name.toLowerCase().includes(search.toLowerCase()) || p.sku_base?.includes(search.toUpperCase()))
-    if (filterCat)      list = list.filter(p => String(p.category) === String(filterCat))
-    if (filterStatus)   list = list.filter(p => p.status === filterStatus)
-    if (filterVisible === 'visible') list = list.filter(p => p.is_visible)
-    if (filterVisible === 'hidden')  list = list.filter(p => !p.is_visible)
-    if (filterLowStock) list = list.filter(p => p.total_stock <= (p.min_stock || 3))
-    return list
-  }, [products, search, filterCat, filterStatus, filterVisible, filterLowStock])
-
-  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
+  // Cuando cambian los filtros: recarga página 1 + stats
+  useEffect(() => { load(1) }, [load])
+  useEffect(() => { loadStats() }, [loadStats])
 
   const handleSaveProduct = (savedProduct, wasEdit) => {
     toast.success(wasEdit ? 'Producto actualizado' : 'Producto creado')
     setEditProduct(null)
-    load()
+    load(1)
+    loadStats()
   }
 
   // Fetch full product detail before opening edit form.
@@ -242,7 +260,7 @@ export default function Inventario() {
     try {
       await svc.updateProduct(product.id, { is_visible: !product.is_visible })
       toast.success(product.is_visible ? 'Ocultado en tienda' : 'Publicado en tienda')
-      load()
+      load(1)
     } catch {
       toast.error('Error')
     }
@@ -253,7 +271,7 @@ export default function Inventario() {
     try {
       await svc.updateProduct(product.id, { status: newStatus })
       toast.success(newStatus === 'active' ? 'Producto activado' : 'Producto desactivado')
-      load()
+      load(1); loadStats()
     } catch { toast.error('Error al cambiar estado') }
   }
 
@@ -271,17 +289,16 @@ export default function Inventario() {
         is_featured: false,
       })
       toast.success(`"${data.name}" duplicado como borrador`)
-      load()
+      load(1); loadStats()
     } catch { toast.error('Error al duplicar') }
   }
-
 
   const handleDelete = async () => {
     try {
       await svc.deleteProduct(confirmDelete.id)
       toast.success('Producto desactivado')
       setConfirmDelete(null)
-      load()
+      load(1); loadStats()
     } catch (e) {
       toast.error(e.response?.data?.detail || 'No se puede eliminar')
     }
@@ -294,7 +311,7 @@ export default function Inventario() {
         <div>
           <h2 className="page-title">Catálogo</h2>
           <p className="text-[13px] text-luma-muted mt-0.5">
-            {filtered.length} productos · {products.reduce((s,p) => s + p.total_stock, 0)} unidades en total
+            {totalCount.toLocaleString('es-CO')} productos en total
           </p>
         </div>
         <div className="flex gap-2 flex-wrap">
@@ -315,7 +332,7 @@ export default function Inventario() {
         {[
           { key: 'catalog',    label: 'Catálogo' },
           { key: 'movements',  label: 'Movimientos' },
-          { key: 'alerts',     label: `Alertas${(outOfStock + lowStock) > 0 ? ` (${outOfStock + lowStock})` : ''}` },
+          { key: 'alerts',     label: `Alertas${(stats.out_of_stock + stats.low_stock) > 0 ? ` (${stats.out_of_stock + stats.low_stock})` : ''}` },
           { key: 'prediction', label: 'Reabastecimiento' },
         ].map(t => (
           <button
@@ -332,26 +349,26 @@ export default function Inventario() {
         ))}
       </div>
 
-      {/* KPI Strip ─ siempre visible */}
+      {/* KPI Strip ─ siempre visible — datos del catálogo completo (sin paginar) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           {
-            label: 'Mejor vendido',
-            value: bestSeller?.name || '—',
-            sub: bestSeller ? `${bestSeller.total_stock} ud. en stock` : '',
-            color: 'text-teal-600'
-          },
-          {
-            label: 'Valor del inventario',
-            value: `$${(totalValue/1000).toFixed(1)}k`,
-            sub: 'Valorado a precio de venta',
+            label: 'Total productos',
+            value: stats.total.toLocaleString('es-CO'),
+            sub: `${stats.out_of_stock} agotados`,
             color: 'text-luma-text'
           },
           {
+            label: 'Valor del inventario',
+            value: `$${(stats.total_value/1000).toFixed(1)}k`,
+            sub: 'Valorado a precio de venta',
+            color: 'text-teal-600'
+          },
+          {
             label: 'Agotados',
-            value: outOfStock,
-            sub: `${lowStock} con stock bajo`,
-            color: outOfStock > 0 ? 'text-red-500' : 'text-teal-600'
+            value: stats.out_of_stock,
+            sub: `${stats.low_stock} con stock bajo`,
+            color: stats.out_of_stock > 0 ? 'text-red-500' : 'text-teal-600'
           },
           {
             label: 'Categorías activas',
@@ -375,23 +392,23 @@ export default function Inventario() {
           <div className="card p-4 flex flex-col sm:flex-row gap-3 flex-wrap">
             <div className="relative flex-1 min-w-[180px]">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-luma-faint pointer-events-none" />
-              <input type="text" placeholder="Buscar por nombre o SKU..." value={search}
-                onChange={e => { setSearch(e.target.value); setPage(1) }}
+              <input type="text" placeholder="Buscar por nombre o SKU..." value={inputSearch}
+                onChange={e => setInputSearch(e.target.value)}
                 className="input-base" style={{ paddingLeft: '2.25rem' }} />
             </div>
-            <select value={filterCat} onChange={e => { setFilterCat(e.target.value); setPage(1) }}
+            <select value={filterCat} onChange={e => setFilterCat(e.target.value)}
               className="input-base w-full sm:w-40">
               <option value="">Todas las categorías</option>
               {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
-            <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1) }}
+            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
               className="input-base w-full sm:w-36">
               <option value="">Todos los estados</option>
               <option value="active">Activo</option>
               <option value="out">Agotado</option>
               <option value="inactive">Inactivo</option>
             </select>
-            <select value={filterVisible} onChange={e => { setFilterVisible(e.target.value); setPage(1) }}
+            <select value={filterVisible} onChange={e => setFilterVisible(e.target.value)}
               className="input-base w-full sm:w-36">
               <option value="">Visibilidad</option>
               <option value="visible">Visible en catálogo</option>
@@ -399,11 +416,11 @@ export default function Inventario() {
             </select>
             <label className="flex items-center gap-2 cursor-pointer px-3 py-2 rounded-xl border border-luma-border hover:bg-cream-100 transition-colors flex-shrink-0">
               <input type="checkbox" checked={filterLowStock}
-                onChange={e => { setFilterLowStock(e.target.checked); setPage(1) }}
+                onChange={e => setFilterLowStock(e.target.checked)}
                 className="accent-teal-600" />
               <span className="text-[12px] text-luma-muted whitespace-nowrap">Stock bajo</span>
             </label>
-            <button onClick={load} className="btn-ghost flex-shrink-0" title="Actualizar"><RefreshCw size={15} /></button>
+            <button onClick={() => { load(1); loadStats() }} className="btn-ghost flex-shrink-0" title="Actualizar"><RefreshCw size={15} /></button>
           </div>
 
           {/* Table */}
@@ -425,7 +442,7 @@ export default function Inventario() {
                 <tbody>
                   {loading ? (
                     Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} cols={6} />)
-                  ) : paginated.length === 0 ? (
+                  ) : products.length === 0 ? (
                     <tr>
                       <td colSpan={8} className="py-16 text-center">
                         <EmptyState
@@ -441,7 +458,7 @@ export default function Inventario() {
                       </td>
                     </tr>
                   ) : (
-                    paginated.map(p => (
+                    products.map(p => (
                       <ProductRow
                         key={p.id}
                         product={p}
@@ -461,30 +478,15 @@ export default function Inventario() {
               </table>
             </div>
 
-            {/* Pagination */}
-            {totalPages > 1 && (
-              <div className="px-5 py-3 border-t border-luma-border flex items-center justify-between">
-                <span className="text-[12px] text-luma-muted">
-                  Mostrando {(page-1)*PAGE_SIZE+1}–{Math.min(page*PAGE_SIZE, filtered.length)} de {filtered.length}
-                </span>
-                <div className="flex gap-1">
-                  <button
-                    onClick={() => setPage(p => Math.max(1, p-1))}
-                    disabled={page === 1}
-                    className="px-3 py-1.5 text-[12px] rounded-lg border border-luma-border hover:bg-cream-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  >
-                    Anterior
-                  </button>
-                  <button
-                    onClick={() => setPage(p => Math.min(totalPages, p+1))}
-                    disabled={page === totalPages}
-                    className="px-3 py-1.5 text-[12px] rounded-lg border border-luma-border hover:bg-cream-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  >
-                    Siguiente
-                  </button>
-                </div>
-              </div>
-            )}
+            {/* Paginación server-side */}
+            <div className="px-5 py-3 border-t border-luma-border">
+              <Pagination
+                page={page}
+                totalCount={totalCount}
+                pageSize={PAGE_SIZE}
+                onPageChange={load}
+              />
+            </div>
           </div>
         </>
       )}
@@ -505,11 +507,7 @@ export default function Inventario() {
       )}
 
       {/* ── TAB: Predicción Reabastecimiento (5.5) ── */}
-      {activeTab === 'prediction' && (
-        <RestockPredictionPanel
-          products={products}
-        />
-      )}
+      {activeTab === 'prediction' && <RestockPredictionPanel />}
 
       {/* ── Modals ── */}
       {detailProduct && (
@@ -535,14 +533,14 @@ export default function Inventario() {
       {variantProduct && (
         <VariantManager
           product={variantProduct}
-          onClose={() => { setVariantProduct(null); load() }}
+          onClose={() => { setVariantProduct(null); load(1); loadStats() }}
         />
       )}
 
       {movementProduct && (
         <StockMovementForm
           product={movementProduct}
-          onClose={() => { setMovementProduct(null); load() }}
+          onClose={() => { setMovementProduct(null); load(1); loadStats() }}
         />
       )}
 
@@ -586,7 +584,7 @@ function StockAlertsPanel({ onNavigateToProduct }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    api.get('/reports/dashboard/')
+    svc.getInventoryAlerts()
       .then(({ data }) => setAlerts(data.stock_alerts || []))
       .catch(() => toast.error('Error cargando alertas de stock'))
       .finally(() => setLoading(false))
@@ -659,29 +657,79 @@ function StockAlertsPanel({ onNavigateToProduct }) {
 }
 
 // ── Purchase Order Modal (5.5) ────────────────────────────────────────────────
-function PurchaseOrderModal({ product, onClose }) {
-  const [qty, setQty]   = useState(10)
-  const [note, setNote] = useState('')
+function PurchaseOrderModal({ item, onClose, onCreated }) {
+  const [qty,    setQty]    = useState(10)
+  const [note,   setNote]   = useState('')
+  const [saving, setSaving] = useState(false)
+  const [ocNumber, setOcNumber] = useState(null)
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    toast.success(`Orden de compra registrada para "${product.name}" (${qty} ud.)`)
-    onClose()
+    setSaving(true)
+    try {
+      const { data } = await svc.createPurchaseOrder({
+        product_name:  item.product_name,
+        size:          item.size  || '',
+        color:         item.color || '',
+        requested_qty: qty,
+        note,
+        variant:       item.variant_id,
+      })
+      setOcNumber(data.number)
+      if (onCreated) onCreated()
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al crear la orden')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (ocNumber) {
+    return (
+      <Modal open onClose={onClose} title="Orden creada" size="sm">
+        <div className="text-center space-y-4 py-2">
+          <div className="w-14 h-14 bg-teal-50 rounded-2xl flex items-center justify-center mx-auto">
+            <CheckCircle size={28} className="text-teal-500" />
+          </div>
+          <div>
+            <p className="text-[15px] font-bold text-luma-text">¡Orden de compra creada!</p>
+            <p className="text-[12px] text-luma-muted mt-1">Número: <strong>{ocNumber}</strong></p>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={onClose}
+              className="flex-1 px-4 py-2 text-[12px] rounded-xl border border-luma-border text-luma-muted hover:bg-cream-100 transition-colors">
+              Cerrar
+            </button>
+            <Link to="/compras" onClick={onClose}
+              className="flex-1 px-4 py-2 text-[12px] rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-semibold transition-colors flex items-center justify-center gap-1.5">
+              <ArrowRight size={12} /> Ver en Compras
+            </Link>
+          </div>
+        </div>
+      </Modal>
+    )
   }
 
   return (
     <Modal open onClose={onClose} title="Crear Orden de Compra" size="sm">
       <div className="space-y-4">
         <div className="p-3 bg-cream-100 rounded-xl">
-          <p className="text-[12px] font-semibold text-luma-text">{product.name}</p>
+          <p className="text-[12px] font-semibold text-luma-text">{item.product_name}</p>
+          {(item.size || item.color) && (
+            <p className="text-[11px] text-luma-muted mt-0.5">
+              {item.size && `Talla: ${item.size}`}{item.size && item.color && ' · '}{item.color && `Color: ${item.color}`}
+            </p>
+          )}
           <p className="text-[11px] text-luma-muted mt-0.5">
-            Stock actual: {product.total_stock} ud. · Ritmo: {product.dailyRate} ud/día
+            Stock actual: {item.current_stock} ud.
           </p>
-          <p className={`text-[11px] font-semibold mt-1 ${
-            product.daysLeft <= 3 ? 'text-red-600' : product.daysLeft <= 7 ? 'text-orange-600' : 'text-amber-600'
-          }`}>
-            Se estima agotamiento en {product.daysLeft} días
-          </p>
+          {item.days_remaining != null && (
+            <p className={`text-[11px] font-semibold mt-1 ${
+              item.days_remaining <= 3 ? 'text-red-600' : item.days_remaining <= 7 ? 'text-orange-600' : 'text-amber-600'
+            }`}>
+              Estimado de agotamiento: {item.days_remaining} días
+            </p>
+          )}
         </div>
         <form onSubmit={handleSubmit} className="space-y-3">
           <div>
@@ -705,9 +753,12 @@ function PurchaseOrderModal({ product, onClose }) {
               className="flex-1 px-4 py-2 text-[12px] rounded-xl border border-luma-border text-luma-muted hover:bg-cream-100 transition-colors">
               Cancelar
             </button>
-            <button type="submit"
-              className="flex-1 px-4 py-2 text-[12px] rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-semibold transition-colors flex items-center justify-center gap-1.5">
-              <ShoppingBag size={12} /> Crear orden
+            <button type="submit" disabled={saving}
+              className="flex-1 px-4 py-2 text-[12px] rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-semibold transition-colors flex items-center justify-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed">
+              {saving
+                ? <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                : <ShoppingBag size={12} />}
+              {saving ? 'Creando...' : 'Crear orden'}
             </button>
           </div>
         </form>
@@ -717,38 +768,24 @@ function PurchaseOrderModal({ product, onClose }) {
 }
 
 // ── Panel: Predicción Reabastecimiento (5.5) ──────────────────────────────────
-function RestockPredictionPanel({ products }) {
-  const [predictions, setPredictions] = useState([])
-  const [loading, setLoading]         = useState(true)
-  const [purchaseOrder, setPurchaseOrder] = useState(null)
+function RestockPredictionPanel() {
+  const [alerts,       setAlerts]       = useState([])
+  const [loading,      setLoading]      = useState(true)
+  const [purchaseItem, setPurchaseItem] = useState(null)
 
-  useEffect(() => {
-    async function calc() {
-      setLoading(true)
-      try {
-        const now = new Date()
-        const thirtyDaysAgo = new Date(now - 30 * 24 * 60 * 60 * 1000)
-        const preds = await Promise.all(
-          products.filter(p => p.total_stock > 0 && p.status !== 'inactive').map(async (p) => {
-            try {
-              const { data } = await svc.getMovements({ 'variant__product': p.id, type: 'sale', page_size: 100 })
-              const movs = data?.results ?? data ?? []
-              const unitsSold = movs
-                .filter(m => new Date(m.created_at) >= thirtyDaysAgo)
-                .reduce((s, m) => s + Math.abs(m.quantity), 0)
-              const dailyRate = unitsSold / 30
-              if (dailyRate <= 0) return null
-              const daysLeft = Math.floor(p.total_stock / dailyRate)
-              if (daysLeft > 10) return null  // Solo < 10 días según spec 5.5
-              return { ...p, daysLeft, dailyRate: dailyRate.toFixed(1), unitsSold }
-            } catch { return null }
-          })
-        )
-        setPredictions(preds.filter(Boolean).sort((a, b) => a.daysLeft - b.daysLeft))
-      } finally { setLoading(false) }
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const { data } = await svc.getInventoryAlerts()
+      setAlerts(data.restock_alerts || [])
+    } catch {
+      toast.error('Error cargando predicciones de reabastecimiento')
+    } finally {
+      setLoading(false)
     }
-    calc()
-  }, [products])
+  }, [])
+
+  useEffect(() => { load() }, [load])
 
   if (loading) {
     return (
@@ -759,13 +796,13 @@ function RestockPredictionPanel({ products }) {
     )
   }
 
-  if (predictions.length === 0) {
+  if (alerts.length === 0) {
     return (
       <div className="card p-12 text-center">
         <TrendingDown size={32} className="mx-auto text-luma-faint mb-3" />
         <p className="text-[15px] font-semibold text-luma-text">No hay predicciones urgentes</p>
         <p className="text-[12px] text-luma-muted mt-1">
-          Ningún producto está en riesgo de agotarse en los próximos 10 días según el ritmo de ventas
+          Ninguna variante está en riesgo de agotarse en los próximos 10 días según el ritmo de ventas
         </p>
       </div>
     )
@@ -774,51 +811,66 @@ function RestockPredictionPanel({ products }) {
   return (
     <>
       <div className="space-y-3">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <TrendingDown size={16} className="text-amber-500" />
           <p className="text-[14px] font-semibold text-luma-text">
-            {predictions.length} producto{predictions.length !== 1 ? 's' : ''} con riesgo de agotamiento
+            {alerts.length} variante{alerts.length !== 1 ? 's' : ''} con riesgo de agotamiento
           </p>
           <span className="text-[11px] text-luma-faint">basado en ventas del último mes</span>
         </div>
         <div className="card overflow-hidden">
           <div className="divide-y divide-luma-border">
-            {predictions.map(p => (
-              <div key={p.id} className="flex items-center gap-4 px-5 py-4 hover:bg-cream-50 transition-colors">
-                {p.main_image ? (
-                  <img src={p.main_image} alt="" className="w-10 h-10 rounded-xl object-cover flex-shrink-0 border border-luma-border" />
-                ) : (
-                  <div className="w-10 h-10 bg-cream-200 rounded-xl flex items-center justify-center flex-shrink-0">
-                    <Package size={14} className="text-luma-faint" />
-                  </div>
-                )}
+            {alerts.map(a => (
+              <div key={a.variant_id} className="flex items-center gap-4 px-5 py-4 hover:bg-cream-50 transition-colors">
+                <div className="w-10 h-10 bg-cream-200 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <Package size={14} className="text-luma-faint" />
+                </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[13px] font-semibold text-luma-text truncate">{p.name}</p>
+                  <p className="text-[13px] font-semibold text-luma-text truncate">{a.product_name}</p>
                   <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                    {(a.size || a.color) && (
+                      <span className="text-[11px] text-luma-muted">
+                        {a.size && `T: ${a.size}`}{a.size && a.color && ' · '}{a.color && `Color: ${a.color}`}
+                      </span>
+                    )}
                     <span className={`text-[11px] font-bold ${
-                      p.daysLeft <= 3 ? 'text-red-600' : p.daysLeft <= 7 ? 'text-orange-600' : 'text-amber-600'
+                      a.days_remaining <= 3 ? 'text-red-600' : a.days_remaining <= 7 ? 'text-orange-600' : 'text-amber-600'
                     }`}>
-                      Se estima agotamiento en {p.daysLeft} días
+                      ~{a.days_remaining} días restantes
                     </span>
                     <span className="text-[11px] text-luma-faint">
-                      {p.dailyRate} ud/día · {p.total_stock} ud. en stock
+                      {a.current_stock} ud. en stock
                     </span>
                   </div>
                 </div>
-                <button
-                  onClick={() => setPurchaseOrder(p)}
-                  className="flex-shrink-0 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-[11px] font-semibold transition-colors flex items-center gap-1.5"
-                >
-                  <ShoppingBag size={11} />
-                  Crear orden de compra
-                </button>
+                {a.has_pending_oc ? (
+                  <Link
+                    to="/compras"
+                    className="flex-shrink-0 px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded-xl text-[11px] font-semibold transition-colors flex items-center gap-1.5"
+                  >
+                    <CheckCircle size={11} />
+                    OC {a.pending_oc_number}
+                  </Link>
+                ) : (
+                  <button
+                    onClick={() => setPurchaseItem(a)}
+                    className="flex-shrink-0 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-[11px] font-semibold transition-colors flex items-center gap-1.5"
+                  >
+                    <ShoppingBag size={11} />
+                    Crear OC
+                  </button>
+                )}
               </div>
             ))}
           </div>
         </div>
       </div>
-      {purchaseOrder && (
-        <PurchaseOrderModal product={purchaseOrder} onClose={() => setPurchaseOrder(null)} />
+      {purchaseItem && (
+        <PurchaseOrderModal
+          item={purchaseItem}
+          onClose={() => setPurchaseItem(null)}
+          onCreated={load}
+        />
       )}
     </>
   )
@@ -841,11 +893,18 @@ function MovimientosPanel() {
   const [loading,   setLoading]   = useState(true)
   const [count,     setCount]     = useState(0)
   const [page,      setPage]      = useState(1)
-  const [filterType,     setFilterType]     = useState('')
-  const [filterDateFrom, setFilterDateFrom] = useState('')
-  const [filterDateTo,   setFilterDateTo]   = useState('')
-  const [filterSearch,   setFilterSearch]   = useState('')
+  const [filterType,        setFilterType]        = useState('')
+  const [filterDateFrom,    setFilterDateFrom]    = useState('')
+  const [filterDateTo,      setFilterDateTo]      = useState('')
+  const [filterSearchInput, setFilterSearchInput] = useState('')  // inmediato
+  const [filterSearch,      setFilterSearch]      = useState('')  // debounced
   const PAGE_SZ = 30
+
+  // Debounce de búsqueda: 350 ms
+  useEffect(() => {
+    const t = setTimeout(() => setFilterSearch(filterSearchInput), 350)
+    return () => clearTimeout(t)
+  }, [filterSearchInput])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -871,11 +930,12 @@ function MovimientosPanel() {
     setFilterType('')
     setFilterDateFrom('')
     setFilterDateTo('')
+    setFilterSearchInput('')
     setFilterSearch('')
     setPage(1)
   }
 
-  const hasFilters = filterType || filterDateFrom || filterDateTo || filterSearch
+  const hasFilters = filterType || filterDateFrom || filterDateTo || filterSearchInput
 
   return (
     <div className="space-y-4">
@@ -888,8 +948,8 @@ function MovimientosPanel() {
             <input
               type="text"
               placeholder="Buscar por producto o nota..."
-              value={filterSearch}
-              onChange={e => { setFilterSearch(e.target.value); setPage(1) }}
+              value={filterSearchInput}
+              onChange={e => setFilterSearchInput(e.target.value)}
               className="input-base"
               style={{ paddingLeft: '2.25rem' }}
             />

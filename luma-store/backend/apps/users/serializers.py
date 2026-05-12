@@ -42,6 +42,10 @@ class UserMeSerializer(serializers.ModelSerializer):
 
 
 class StoreConfigSerializer(serializers.ModelSerializer):
+    # Campos de imagen: permiten null (para borrar) y devuelven URL absoluta
+    logo         = serializers.ImageField(required=False, allow_null=True, use_url=True)
+    banner_image = serializers.ImageField(required=False, allow_null=True, use_url=True)
+
     class Meta:
         model = StoreConfig
         fields = "__all__"

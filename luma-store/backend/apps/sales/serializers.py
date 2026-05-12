@@ -65,7 +65,19 @@ class SaleSerializer(serializers.ModelSerializer):
         return float(obj.subtotal) - float(obj.total)
 
     def get_payment_method_display(self, obj):
-        return obj.get_payment_method_display()
+        """Resuelve la etiqueta desde StoreConfig inyectado en el contexto
+        (1 fetch por request, no N fetches por objeto de la lista)."""
+        BASE = {
+            "cash": "Efectivo", "transfer": "Transferencia",
+            "debit": "Débito", "credit": "Crédito",
+            "nequi": "Nequi", "daviplata": "Daviplata", "other": "Otro",
+        }
+        config = self.context.get("store_config")
+        if config:
+            for m in (config.payment_methods or []):
+                if m.get("key") == obj.payment_method:
+                    return m.get("label", obj.payment_method)
+        return BASE.get(obj.payment_method, obj.payment_method)
 
     def get_order_number(self, obj):
         try:
@@ -87,31 +99,59 @@ class SaleCreateSerializer(serializers.Serializer):
     points_used    = serializers.IntegerField(required=False, default=0)
 
     def validate_payment_method(self, value):
-        """Normaliza el método de pago — acepta alias del frontend."""
+        """Valida el método de pago contra StoreConfig (métodos configurados)."""
+        # Alias de compatibilidad para clientes que envíen claves antiguas
         ALIAS = {
-            'card':     'debit',
-            'mixed':    'other',   # Pago mixto → 'other' (no existe campo mixed en BD)
-            'tarjeta':  'debit',
+            'card':    'debit',
+            'mixed':   'other',
+            'tarjeta': 'debit',
         }
         normalized = ALIAS.get(value, value)
-        valid = [c[0] for c in Sale.PaymentMethod.choices]
-        if normalized not in valid:
+
+        try:
+            config  = StoreConfig.get_config()
+            methods = config.payment_methods or []
+            if methods:
+                valid_keys = [m["key"] for m in methods]
+                if normalized not in valid_keys:
+                    raise serializers.ValidationError(
+                        f"Método de pago inválido: '{value}'. "
+                        f"Válidos: {', '.join(valid_keys)}"
+                    )
+                return normalized
+        except serializers.ValidationError:
+            raise
+        except Exception:
+            pass
+
+        # Fallback: si no hay métodos configurados, usar los del sistema base
+        base_valid = [c[0] for c in Sale.PaymentMethod.choices]
+        if normalized not in base_valid:
             raise serializers.ValidationError(
                 f"Método de pago inválido: '{value}'. "
-                f"Válidos: {', '.join(valid)}"
+                f"Válidos: {', '.join(base_valid)}"
             )
         return normalized
 
     def validate_items(self, items):
         if not items:
             raise serializers.ValidationError("Debe incluir al menos un ítem.")
+
+        # Bulk-fetch todas las variantes nombradas en una sola query
+        variant_ids = [i["variant_id"] for i in items if i.get("variant_id")]
+        variants_map = {}
+        if variant_ids:
+            variants_map = {
+                v.id: v
+                for v in ProductVariant.objects.filter(id__in=variant_ids).select_related("product")
+            }
+
         for item in items:
             vid = item.get('variant_id')
             pid = item.get('product_id')
             if vid:
-                try:
-                    variant = ProductVariant.objects.get(id=vid)
-                except ProductVariant.DoesNotExist:
+                variant = variants_map.get(vid)
+                if not variant:
                     raise serializers.ValidationError(f"Variante {vid} no existe.")
                 if variant.stock < item['quantity']:
                     raise serializers.ValidationError(
@@ -123,8 +163,8 @@ class SaleCreateSerializer(serializers.Serializer):
                     product = Product.objects.prefetch_related('variants').get(id=pid)
                 except Product.DoesNotExist:
                     raise serializers.ValidationError(f"Producto {pid} no existe.")
-                # Verificar stock total del producto
-                total_stock = sum(v.stock for v in product.variants.filter(is_active=True))
+                # Filtra en Python usando el prefetch cache — evita N+1
+                total_stock = sum(v.stock for v in product.variants.all() if v.is_active)
                 if total_stock < item['quantity']:
                     raise serializers.ValidationError(
                         f"Stock insuficiente para {product.name}: disponible {total_stock} ud."

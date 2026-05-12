@@ -9,6 +9,11 @@ class Customer(models.Model):
     points     = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        indexes = [
+            models.Index(fields=["created_at"], name="customer_created_at_idx"),
+        ]
+
     def __str__(self):
         return self.name
 

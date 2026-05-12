@@ -17,7 +17,7 @@ export default function Layout() {
           mobileOpen={mobileOpen}
           onMenuToggle={() => setMobileOpen(!mobileOpen)}
         />
-        <main className="flex-1 p-4 md:p-6">
+        <main className="flex-1 p-4 md:p-6 overflow-x-hidden min-w-0">
           <div className="page-enter">
             <Outlet />
           </div>

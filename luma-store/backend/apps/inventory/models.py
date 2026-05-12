@@ -91,6 +91,11 @@ class ProductVariant(models.Model):
     stock     = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
 
+    class Meta:
+        indexes = [
+            models.Index(fields=["is_active", "stock"], name="variant_active_stock_idx"),
+        ]
+
     def __str__(self):
         return f"{self.product.name} — {self.size} {self.color}".strip()
 
@@ -126,6 +131,12 @@ class StockMovement(models.Model):
         "users.User", on_delete=models.SET_NULL, null=True, blank=True
     )
     created_at   = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["variant", "type", "created_at"], name="stockmov_variant_type_date_idx"),
+            models.Index(fields=["created_at"],                     name="stockmov_created_at_idx"),
+        ]
 
     def __str__(self):
         return f"{self.get_type_display()} — {self.variant} ({self.quantity})"

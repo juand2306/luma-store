@@ -1,6 +1,63 @@
 from rest_framework import serializers
-from .models import Order, OrderItem, OrderStatusHistory
+from .models import Order, OrderItem, OrderStatusHistory, PurchaseOrder
 from apps.inventory.models import ProductVariant
+
+
+# ── Compras ───────────────────────────────────────────────────────────────────
+
+class PurchaseOrderSerializer(serializers.ModelSerializer):
+    status_display   = serializers.SerializerMethodField()
+    pending_qty      = serializers.SerializerMethodField()
+    created_by_name  = serializers.SerializerMethodField()
+    received_by_name = serializers.SerializerMethodField()
+    current_stock    = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = PurchaseOrder
+        fields = [
+            "id", "number",
+            "variant", "product_name", "size", "color",
+            "requested_qty", "received_qty", "pending_qty",
+            "unit_cost", "note",
+            "status", "status_display",
+            "created_by", "created_by_name",
+            "received_by", "received_by_name", "received_at",
+            "current_stock",
+            "created_at", "updated_at",
+        ]
+        read_only_fields = [
+            "number", "received_qty", "status",
+            "created_by", "received_by", "received_at",
+            "created_at", "updated_at",
+        ]
+
+    def get_status_display(self, obj):
+        return obj.get_status_display()
+
+    def get_pending_qty(self, obj):
+        return max(0, obj.requested_qty - obj.received_qty)
+
+    def get_created_by_name(self, obj):
+        return obj.created_by.get_full_name() if obj.created_by else None
+
+    def get_received_by_name(self, obj):
+        return obj.received_by.get_full_name() if obj.received_by else None
+
+    def get_current_stock(self, obj):
+        return obj.variant.stock if obj.variant_id else None
+
+
+class PurchaseOrderUpdateSerializer(serializers.ModelSerializer):
+    """Solo permite editar nota, costo y cantidad (si sigue pendiente)."""
+    class Meta:
+        model  = PurchaseOrder
+        fields = ["note", "unit_cost", "requested_qty"]
+
+
+class PurchaseReceiveSerializer(serializers.Serializer):
+    qty_received   = serializers.IntegerField(min_value=1)
+    payment_method = serializers.CharField(required=False, allow_blank=True, default="")
+    note           = serializers.CharField(required=False, allow_blank=True, default="")
 
 
 class OrderItemSerializer(serializers.ModelSerializer):
@@ -91,7 +148,8 @@ class OrderListSerializer(serializers.ModelSerializer):
         return obj.get_status_display()
 
     def get_item_count(self, obj):
-        return obj.items.count()
+        # Usa el prefetch cache en lugar de lanzar un COUNT extra por pedido
+        return len(obj.items.all())
 
     def get_sale_number(self, obj):
         try:
@@ -123,12 +181,22 @@ class StoreOrderCreateSerializer(serializers.Serializer):
     def validate_items(self, items):
         if not items:
             raise serializers.ValidationError("El pedido debe tener al menos un ítem.")
+
+        # Bulk-fetch todas las variantes en una sola query (evita N+1)
+        variant_ids = [item["variant_id"] for item in items]
+        variants_map = {
+            v.id: v
+            for v in ProductVariant.objects.filter(
+                id__in=variant_ids
+            ).select_related("product")
+        }
+
         for item in items:
-            try:
-                variant = ProductVariant.objects.get(id=item["variant_id"])
-            except ProductVariant.DoesNotExist:
+            vid = item["variant_id"]
+            variant = variants_map.get(vid)
+            if not variant:
                 raise serializers.ValidationError(
-                    f"El producto con variante ID {item['variant_id']} no existe."
+                    f"El producto con variante ID {vid} no existe."
                 )
             if variant.stock < item["quantity"]:
                 raise serializers.ValidationError(

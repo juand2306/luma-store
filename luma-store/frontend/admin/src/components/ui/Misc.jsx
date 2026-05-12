@@ -131,6 +131,67 @@ export function ConfirmDialog({
   )
 }
 
+// ─── Pagination ───────────────────────────────────────────────────────────────
+/**
+ * Controles de paginación estándar para listas del panel admin.
+ * No renderiza nada si todos los registros caben en una sola página.
+ *
+ * Props:
+ *   page        – página actual (base 1)
+ *   totalCount  – total de registros del servidor (campo `count` de la respuesta)
+ *   pageSize    – registros por página (debe coincidir con lo enviado al backend)
+ *   onPageChange(newPage) – callback que recibe el número de página a cargar
+ *   className   – clases extra opcionales
+ */
+export function Pagination({ page, totalCount, pageSize = 50, onPageChange, className = '' }) {
+  if (!totalCount || totalCount <= pageSize) return null
+  const totalPages = Math.ceil(totalCount / pageSize)
+  const from = (page - 1) * pageSize + 1
+  const to   = Math.min(page * pageSize, totalCount)
+
+  const btnCls = (disabled) =>
+    `px-3 py-1.5 text-[12px] rounded-lg border border-luma-border transition-colors
+     ${disabled
+       ? 'opacity-40 cursor-not-allowed bg-white text-luma-faint'
+       : 'hover:bg-cream-200 text-luma-text bg-white'}`
+
+  return (
+    <div className={`flex items-center justify-between gap-3 flex-wrap ${className}`}>
+      <span className="text-[12px] text-luma-muted">
+        {from.toLocaleString('es-CO')}–{to.toLocaleString('es-CO')}{' '}
+        de <span className="font-semibold text-luma-text">{totalCount.toLocaleString('es-CO')}</span>
+      </span>
+      <div className="flex items-center gap-1">
+        <button
+          onClick={() => onPageChange(1)}
+          disabled={page === 1}
+          className={btnCls(page === 1)}
+          title="Primera página"
+        >«</button>
+        <button
+          onClick={() => onPageChange(page - 1)}
+          disabled={page === 1}
+          className={btnCls(page === 1)}
+        >Anterior</button>
+        <span className="px-3 py-1.5 text-[12px] font-semibold text-luma-text whitespace-nowrap">
+          {page} / {totalPages}
+        </span>
+        <button
+          onClick={() => onPageChange(page + 1)}
+          disabled={page === totalPages}
+          className={btnCls(page === totalPages)}
+        >Siguiente</button>
+        <button
+          onClick={() => onPageChange(totalPages)}
+          disabled={page === totalPages}
+          className={btnCls(page === totalPages)}
+          title="Última página"
+        >»</button>
+      </div>
+    </div>
+  )
+}
+
 // ─── Alert Banner (inline error/warning) ─────────────────────────────────────
 export function AlertBanner({ type = 'error', children, className = '' }) {
   const styles = {

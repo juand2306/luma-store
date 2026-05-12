@@ -1,8 +1,10 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { usePaymentMethods } from '../hooks/usePaymentMethods'
 import toast from 'react-hot-toast'
 import {
   CreditCard, Plus, Lock, Unlock, ArrowUpCircle, ArrowDownCircle,
-  RefreshCw, AlertCircle, ChevronDown, X
+  RefreshCw, AlertCircle, ChevronDown, Bot, Info,
+  Clock, CheckCircle2,
 } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import { Input, Select } from '../components/ui/Input'
@@ -13,7 +15,13 @@ import * as svc from '../api/services'
 
 const fmt = (n) => `$${Number(n || 0).toLocaleString('es-CO')}`
 
-// ── Movement row ─────────────────────────────────────────────────────────────
+// Obtiene la fecha local como string YYYY-MM-DD
+function localDateString() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// ── Movement row ──────────────────────────────────────────────────────────────
 function MovRow({ mov }) {
   const isIncome = mov.type === 'income'
   const isRefund = mov.type === 'refund'
@@ -68,8 +76,10 @@ function HistoryDetailModal({ open, onClose, sessionId }) {
       })
     : ''
 
+  const hasDifference = detail && detail.difference !== null && detail.difference !== undefined
+
   return (
-    <Modal open={open} onClose={onClose} title={`Detalle de cierre — ${dateLabel}`} size="lg">
+    <Modal open={open} onClose={onClose} title={`Detalle — ${dateLabel}`} size="lg">
       {loading ? (
         <div className="flex justify-center py-12">
           <RefreshCw size={22} className="animate-spin text-luma-faint" />
@@ -77,21 +87,51 @@ function HistoryDetailModal({ open, onClose, sessionId }) {
       ) : detail ? (
         <div className="space-y-5">
 
+          {/* Auto-close banner */}
+          {detail.auto_closed && (
+            <div className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+              <Bot size={16} className="text-amber-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-[12px] font-semibold text-amber-800">Sesión cerrada automáticamente</p>
+                <p className="text-[11px] text-amber-700 mt-0.5">
+                  El sistema cerró esta caja a las 23:59 del{' '}
+                  {new Date(detail.date + 'T00:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'long' })}{' '}
+                  porque no fue cerrada manualmente. No se realizó conteo físico.
+                </p>
+                {detail.note && (
+                  <p className="text-[11px] text-amber-600 mt-1 italic">{detail.note}</p>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Session info row */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 bg-cream-100 rounded-xl">
             {[
               { label: 'Abierta por',  value: detail.opened_by_name || '—',
                 sub: detail.opened_at ? new Date(detail.opened_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : null },
-              { label: 'Cerrada por',  value: detail.closed_by_name || '—',
+              { label: 'Cerrada por',
+                value: detail.auto_closed ? 'Sistema' : (detail.closed_by_name || '—'),
+                isSystem: detail.auto_closed,
                 sub: detail.closed_at ? new Date(detail.closed_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : null },
               { label: 'Monto apertura', value: fmt(detail.opening_amount), sub: null },
-              { label: 'Estado',         value: null, badge: detail.status },
+              { label: 'Estado', value: null, badge: detail.status, autoClose: detail.auto_closed },
             ].map(item => (
               <div key={item.label}>
                 <p className="section-label mb-0.5">{item.label}</p>
                 {item.badge
-                  ? <StatusBadge status={item.badge} />
-                  : <p className="text-[13px] font-semibold text-luma-text">{item.value}</p>
+                  ? <div className="flex flex-col gap-1">
+                      <StatusBadge status={item.badge} />
+                      {item.autoClose && (
+                        <span className="text-[10px] bg-amber-100 text-amber-700 font-semibold px-1.5 py-0.5 rounded-md w-fit">
+                          Auto-cerrada
+                        </span>
+                      )}
+                    </div>
+                  : <p className={`text-[13px] font-semibold ${item.isSystem ? 'text-amber-600 flex items-center gap-1' : 'text-luma-text'}`}>
+                      {item.isSystem && <Bot size={12} />}
+                      {item.value}
+                    </p>
                 }
                 {item.sub && <p className="text-[11px] text-luma-faint">{item.sub}</p>}
               </div>
@@ -104,7 +144,7 @@ function HistoryDetailModal({ open, onClose, sessionId }) {
               { label: 'Total ingresos', value: fmt(detail.total_income),  color: 'text-teal-600' },
               { label: 'Total egresos',  value: fmt(detail.total_expense), color: 'text-red-500' },
               { label: 'Devoluciones',   value: fmt(detail.total_refund),  color: 'text-amber-600' },
-              { label: 'Saldo final',    value: fmt(detail.current_cash),  color: 'text-luma-text' },
+              { label: 'Saldo calculado', value: fmt(detail.current_cash), color: 'text-luma-text' },
             ].map(k => (
               <div key={k.label} className="card p-3">
                 <p className="section-label">{k.label}</p>
@@ -113,36 +153,48 @@ function HistoryDetailModal({ open, onClose, sessionId }) {
             ))}
           </div>
 
-          {/* Difference banner */}
-          <div className={`p-3 rounded-xl flex items-start gap-3 border-l-4 ${
-            Math.abs(Number(detail.difference)) < 1
-              ? 'border-teal-500 bg-teal-50'
-              : Number(detail.difference) > 0
-              ? 'border-green-500 bg-green-50'
-              : 'border-amber-500 bg-amber-50'
-          }`}>
-            <AlertCircle size={15} className={`mt-0.5 flex-shrink-0 ${
-              Math.abs(Number(detail.difference)) < 1 ? 'text-teal-500'
-              : Number(detail.difference) > 0 ? 'text-green-500' : 'text-amber-500'
-            }`} />
-            <div>
-              <p className="text-[12px] font-semibold text-luma-text">
-                Esperado: {fmt(detail.closing_amount)} &nbsp;·&nbsp;
-                Contado: {fmt(detail.counted_amount)} &nbsp;·&nbsp;
-                Diferencia:&nbsp;
-                <span className={
-                  Math.abs(Number(detail.difference)) < 1 ? 'text-teal-600'
-                  : Number(detail.difference) > 0 ? 'text-green-600' : 'text-red-500'
-                }>
-                  {fmt(Math.abs(detail.difference))}
-                  {Number(detail.difference) > 0 ? ' (sobrante)' : Number(detail.difference) < 0 ? ' (faltante)' : ' ✓'}
-                </span>
-              </p>
-              {detail.note && (
-                <p className="text-[11px] text-luma-muted mt-0.5">📝 {detail.note}</p>
-              )}
+          {/* Difference banner — only when there was a physical count */}
+          {hasDifference ? (
+            <div className={`p-3 rounded-xl flex items-start gap-3 border-l-4 ${
+              Math.abs(Number(detail.difference)) < 1
+                ? 'border-teal-500 bg-teal-50'
+                : Number(detail.difference) > 0
+                ? 'border-green-500 bg-green-50'
+                : 'border-amber-500 bg-amber-50'
+            }`}>
+              <AlertCircle size={15} className={`mt-0.5 flex-shrink-0 ${
+                Math.abs(Number(detail.difference)) < 1 ? 'text-teal-500'
+                : Number(detail.difference) > 0 ? 'text-green-500' : 'text-amber-500'
+              }`} />
+              <div>
+                <p className="text-[12px] font-semibold text-luma-text">
+                  Esperado: {fmt(detail.closing_amount)} &nbsp;·&nbsp;
+                  Contado: {fmt(detail.counted_amount)} &nbsp;·&nbsp;
+                  Diferencia:&nbsp;
+                  <span className={
+                    Math.abs(Number(detail.difference)) < 1 ? 'text-teal-600'
+                    : Number(detail.difference) > 0 ? 'text-green-600' : 'text-red-500'
+                  }>
+                    {fmt(Math.abs(detail.difference))}
+                    {Number(detail.difference) > 0 ? ' (sobrante)' : Number(detail.difference) < 0 ? ' (faltante)' : ' ✓'}
+                  </span>
+                </p>
+                {detail.note && !detail.auto_closed && (
+                  <p className="text-[11px] text-luma-muted mt-0.5">📝 {detail.note}</p>
+                )}
+              </div>
             </div>
-          </div>
+          ) : (
+            /* Auto-closed: no physical count */
+            <div className="p-3 rounded-xl flex items-start gap-3 border-l-4 border-amber-400 bg-amber-50">
+              <Info size={15} className="text-amber-500 mt-0.5 flex-shrink-0" />
+              <p className="text-[12px] text-amber-800">
+                <strong>Saldo calculado por sistema: {fmt(detail.closing_amount)}</strong>
+                <br />
+                No hubo conteo físico — la sesión fue cerrada automáticamente.
+              </p>
+            </div>
+          )}
 
           {/* Movements */}
           <div>
@@ -180,16 +232,18 @@ function HistoryDetailModal({ open, onClose, sessionId }) {
   )
 }
 
+// ── Main Page ─────────────────────────────────────────────────────────────────
 export default function Caja() {
   const [session,  setSession]  = useState(null)
   const [loading,  setLoading]  = useState(true)
   const [history,  setHistory]  = useState([])
+  const { methods } = usePaymentMethods()
 
   // Modals
-  const [openModal,      setOpenModal]      = useState(false)
-  const [closeModal,     setCloseModal]     = useState(false)
-  const [movModal,       setMovModal]       = useState(false)
-  const [histDetailId,   setHistDetailId]   = useState(null)   // id of session to show in detail modal
+  const [openModal,    setOpenModal]    = useState(false)
+  const [closeModal,   setCloseModal]   = useState(false)
+  const [movModal,     setMovModal]     = useState(false)
+  const [histDetailId, setHistDetailId] = useState(null)
 
   // History pagination
   const [showAllHistory, setShowAllHistory] = useState(false)
@@ -206,32 +260,84 @@ export default function Caja() {
 
   const [saving, setSaving] = useState(false)
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  // Track the date when page was last loaded (for midnight detection)
+  const lastLoadedDate = useRef(localDateString())
+
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
     try {
-      const today = new Date().toISOString().split('T')[0]
-      const { data } = await svc.getSessions({ date: today })
-      const sessions = data?.results ?? data
+      // 1. Auto-cerrar sesiones de días anteriores
+      const { data: staleData } = await svc.checkStaleSessions()
+      if (staleData.auto_closed_count > 0) {
+        const count = staleData.auto_closed_count
+        toast(
+          `🔒 ${count} sesión${count > 1 ? 'es' : ''} de día${count > 1 ? 's' : ''} anterior${count > 1 ? 'es' : ''} ${count > 1 ? 'fueron cerradas' : 'fue cerrada'} automáticamente`,
+          {
+            duration: 6000,
+            style: { background: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E' },
+          }
+        )
+      }
+
+      // 2. Sesión de hoy
+      const today = localDateString()
+      const { data: listData } = await svc.getSessions({ date: today })
+      const sessions = listData?.results ?? listData
       if (sessions?.length > 0) {
         const { data: sess } = await svc.getSession(sessions[0].id)
         setSession(sess)
       } else {
         setSession(null)
       }
-      // History — fetch last 30 closed sessions
-      const { data: hist } = await svc.getSessions({ status: 'closed' })
-      setHistory(hist?.results ?? hist ?? [])
-    } catch { toast.error('Error cargando caja') }
-    finally { setLoading(false) }
+
+      // 3. Historial completo (todas las cerradas — page_size=200 para no paginar)
+      const { data: hist } = await svc.getSessions({ status: 'closed', page_size: 200 })
+      const histList = hist?.results ?? hist ?? []
+      setHistory(histList)
+      lastLoadedDate.current = today
+    } catch {
+      toast.error('Error cargando caja')
+    } finally {
+      if (!silent) setLoading(false)
+    }
   }, [])
 
   useEffect(() => { load() }, [load])
 
+  // ── Midnight detection ───────────────────────────────────────────────────────
+  useEffect(() => {
+    // Timer cada minuto: si el día cambió desde la última carga, recargar
+    const interval = setInterval(() => {
+      const today = localDateString()
+      if (today !== lastLoadedDate.current) {
+        // Cruzamos medianoche — recargar silenciosamente (sin spinner)
+        load(true)
+      }
+    }, 60_000) // cada 60 segundos
+
+    // Visibility change: el usuario vuelve a la pestaña después de un tiempo
+    const handleVisibility = () => {
+      if (!document.hidden) {
+        const today = localDateString()
+        if (today !== lastLoadedDate.current) {
+          load(true)
+        }
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
+  }, [load])
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
   const handleOpen = async () => {
     if (!openAmount) { toast.error('Ingresa el monto de apertura'); return }
     setSaving(true)
     try {
-      const today = new Date().toISOString().split('T')[0]
+      const today = localDateString()
       await svc.openSession({ date: today, opening_amount: openAmount })
       toast.success('¡Caja abierta!')
       setOpenModal(false)
@@ -247,7 +353,7 @@ export default function Caja() {
     setSaving(true)
     try {
       await svc.closeSession(session.id, { counted_amount: countedAmount, note: closeNote })
-      toast.success('Caja cerrada exitosamente')
+      toast.success('✅ Caja cerrada exitosamente')
       setCloseModal(false)
       setCountedAmount('')
       setCloseNote('')
@@ -264,7 +370,7 @@ export default function Caja() {
     }
     setSaving(true)
     try {
-      await svc.createCashMovement({ ...mov, session: session.id, amount: mov.amount })
+      await svc.createCashMovement({ ...mov, session: session.id })
       toast.success('Movimiento registrado')
       setMovModal(false)
       setMov({ type: 'expense', amount: '', description: '', payment_method: 'cash' })
@@ -304,7 +410,7 @@ export default function Caja() {
               </Button>
             </>
           )}
-          <button onClick={load} className="btn-ghost" title="Actualizar">
+          <button onClick={() => load()} className="btn-ghost" title="Actualizar">
             <RefreshCw size={15} />
           </button>
         </div>
@@ -332,10 +438,10 @@ export default function Caja() {
           {/* KPI cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {[
-              { label: 'Saldo actual',   value: fmt(session.current_cash),    color: 'text-teal-600', bg: 'bg-teal-50' },
-              { label: 'Total ingresos', value: fmt(session.total_income),    color: 'text-green-600', bg: 'bg-green-50' },
-              { label: 'Total egresos',  value: fmt(session.total_expense),   color: 'text-red-500',  bg: 'bg-red-50' },
-              { label: 'Devoluciones',   value: fmt(session.total_refund),    color: 'text-amber-600', bg: 'bg-amber-50' },
+              { label: 'Saldo actual',   value: fmt(session.current_cash),  color: 'text-teal-600',  bg: 'bg-teal-50' },
+              { label: 'Total ingresos', value: fmt(session.total_income),  color: 'text-green-600', bg: 'bg-green-50' },
+              { label: 'Total egresos',  value: fmt(session.total_expense), color: 'text-red-500',   bg: 'bg-red-50' },
+              { label: 'Devoluciones',   value: fmt(session.total_refund),  color: 'text-amber-600', bg: 'bg-amber-50' },
             ].map(k => (
               <div key={k.label} className={`card p-4 ${isOpen ? '' : 'opacity-75'}`}>
                 <p className="section-label">{k.label}</p>
@@ -346,19 +452,33 @@ export default function Caja() {
           </div>
 
           {/* Closed diff info */}
-          {session.status === 'closed' && (
+          {session.status === 'closed' && !session.auto_closed && (
             <div className={`card p-4 flex items-center gap-3 border-l-4 ${
-              Math.abs(session.difference) < 1000 ? 'border-teal-500' : 'border-amber-500'
+              Math.abs(session.difference ?? 0) < 1000 ? 'border-teal-500' : 'border-amber-500'
             }`}>
-              <AlertCircle size={18} className={Math.abs(session.difference) < 1000 ? 'text-teal-500' : 'text-amber-500'} />
+              <AlertCircle size={18} className={Math.abs(session.difference ?? 0) < 1000 ? 'text-teal-500' : 'text-amber-500'} />
               <div>
                 <p className="text-[13px] font-semibold text-luma-text">Diferencia al cierre</p>
                 <p className="text-[12px] text-luma-muted">
                   Contado: {fmt(session.counted_amount)} · Esperado: {fmt(session.closing_amount)} ·{' '}
-                  <span className={Math.abs(session.difference) < 1 ? 'text-teal-600' : 'text-amber-600'}>
-                    Diferencia: {fmt(Math.abs(session.difference))}
-                    {session.difference > 0 ? ' (sobrante)' : session.difference < 0 ? ' (faltante)' : ' ✓'}
+                  <span className={Math.abs(session.difference ?? 0) < 1 ? 'text-teal-600' : 'text-amber-600'}>
+                    Diferencia: {fmt(Math.abs(session.difference ?? 0))}
+                    {(session.difference ?? 0) > 0 ? ' (sobrante)' : (session.difference ?? 0) < 0 ? ' (faltante)' : ' ✓'}
                   </span>
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Auto-closed info banner */}
+          {session.auto_closed && (
+            <div className="card p-4 flex items-center gap-3 border-l-4 border-amber-400">
+              <Bot size={18} className="text-amber-500 flex-shrink-0" />
+              <div>
+                <p className="text-[13px] font-semibold text-amber-800">Sesión cerrada automáticamente</p>
+                <p className="text-[12px] text-amber-700">
+                  El sistema cerró esta caja a las 23:59 porque no fue cerrada manualmente.
+                  El saldo calculado es {fmt(session.closing_amount)}.
                 </p>
               </div>
             </div>
@@ -398,8 +518,17 @@ export default function Caja() {
       {history.length > 0 && (
         <div className="card overflow-hidden">
           <div className="px-5 py-4 border-b border-luma-border flex items-center justify-between">
-            <h3 className="text-[14px] font-semibold text-luma-text">Historial de cierres</h3>
-            <span className="text-[11px] text-luma-faint">{history.length} cierre{history.length !== 1 ? 's' : ''} · Haz clic en una fila para ver el detalle</span>
+            <div className="flex items-center gap-2">
+              <h3 className="text-[14px] font-semibold text-luma-text">Historial de cierres</h3>
+              {history.some(h => h.auto_closed) && (
+                <span className="text-[10px] bg-amber-100 text-amber-700 font-semibold px-2 py-0.5 rounded-lg flex items-center gap-1">
+                  <Bot size={10} /> Incluye cierres automáticos
+                </span>
+              )}
+            </div>
+            <span className="text-[11px] text-luma-faint">
+              {history.length} cierre{history.length !== 1 ? 's' : ''} · Haz clic en una fila para ver el detalle
+            </span>
           </div>
           <div className="overflow-x-auto">
             <table className="luma-table">
@@ -408,11 +537,11 @@ export default function Caja() {
                   <th>Fecha</th>
                   <th>Apertura</th>
                   <th>Contado</th>
-                  <th>Esperado</th>
+                  <th>Calculado</th>
                   <th>Diferencia</th>
                   <th>Abierta por</th>
                   <th>Cerrada por</th>
-                  <th>Nota de cierre</th>
+                  <th>Nota</th>
                   <th>Estado</th>
                 </tr>
               </thead>
@@ -420,36 +549,64 @@ export default function Caja() {
                 {(showAllHistory ? history : history.slice(0, 10)).map(h => (
                   <tr
                     key={h.id}
-                    className="cursor-pointer hover:bg-cream-100 transition-colors"
+                    className={`cursor-pointer hover:bg-cream-100 transition-colors ${h.auto_closed ? 'bg-amber-50/40' : ''}`}
                     onClick={() => setHistDetailId(h.id)}
-                    title="Ver detalle"
+                    title="Ver detalle completo"
                   >
                     <td className="font-medium">
                       <p>{new Date(h.date + 'T00:00:00').toLocaleDateString('es-CO', { weekday: 'short', day: '2-digit', month: 'short' })}</p>
                       {h.closed_at && (
-                        <p className="text-[10px] text-luma-faint">
-                          Cierre {new Date(h.closed_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
+                        <p className="text-[10px] text-luma-faint flex items-center gap-0.5">
+                          <Clock size={9} />
+                          {new Date(h.closed_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
                         </p>
                       )}
                     </td>
                     <td>{fmt(h.opening_amount)}</td>
-                    <td>{h.counted_amount ? fmt(h.counted_amount) : <span className="text-luma-faint">—</span>}</td>
+                    <td>
+                      {h.counted_amount != null
+                        ? fmt(h.counted_amount)
+                        : <span className="text-luma-faint text-[11px]">—</span>}
+                    </td>
                     <td>{fmt(h.closing_amount)}</td>
-                    <td className={
-                      Math.abs(Number(h.difference)) < 1 ? 'text-teal-600 font-semibold'
-                      : Number(h.difference) > 0 ? 'text-green-600 font-semibold' : 'text-red-500 font-semibold'
-                    }>
-                      {Number(h.difference) > 0 ? '+' : ''}{fmt(h.difference)}
-                      <span className="text-[10px] ml-1 font-normal">
-                        {Math.abs(Number(h.difference)) < 1 ? '(cuadrado)' : Number(h.difference) > 0 ? '(sobrante)' : '(faltante)'}
-                      </span>
+                    <td>
+                      {h.difference != null ? (
+                        <span className={
+                          Math.abs(Number(h.difference)) < 1 ? 'text-teal-600 font-semibold'
+                          : Number(h.difference) > 0 ? 'text-green-600 font-semibold' : 'text-red-500 font-semibold'
+                        }>
+                          {Number(h.difference) > 0 ? '+' : ''}{fmt(h.difference)}
+                          <span className="text-[10px] ml-1 font-normal">
+                            {Math.abs(Number(h.difference)) < 1 ? '(cuadrado)' : Number(h.difference) > 0 ? '(sobrante)' : '(faltante)'}
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-amber-600 flex items-center gap-1">
+                          <Bot size={10} /> N/A
+                        </span>
+                      )}
                     </td>
                     <td className="text-[11px] text-luma-muted">{h.opened_by_name || '—'}</td>
-                    <td className="text-[11px] text-luma-muted">{h.closed_by_name || '—'}</td>
-                    <td className="text-[11px] text-luma-muted max-w-[140px] truncate" title={h.note}>
+                    <td className="text-[11px] text-luma-muted">
+                      {h.auto_closed ? (
+                        <span className="text-amber-600 flex items-center gap-1">
+                          <Bot size={11} /> Sistema
+                        </span>
+                      ) : (h.closed_by_name || '—')}
+                    </td>
+                    <td className="text-[11px] text-luma-muted max-w-[120px] truncate" title={h.note}>
                       {h.note || <span className="text-luma-faint">—</span>}
                     </td>
-                    <td><StatusBadge status={h.status} /></td>
+                    <td>
+                      <div className="flex flex-col gap-1">
+                        <StatusBadge status={h.status} />
+                        {h.auto_closed && (
+                          <span className="text-[10px] bg-amber-100 text-amber-700 font-semibold px-1.5 py-0.5 rounded-md flex items-center gap-0.5 w-fit">
+                            <Bot size={9} /> Auto
+                          </span>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -482,12 +639,14 @@ export default function Caja() {
         footer={
           <div className="flex gap-2 justify-end">
             <Button variant="outline" onClick={() => setOpenModal(false)}>Cancelar</Button>
-            <Button variant="teal" loading={saving} onClick={handleOpen}>Abrir caja</Button>
+            <Button variant="teal" loading={saving} onClick={handleOpen} icon={Unlock}>Abrir caja</Button>
           </div>
         }
       >
         <div className="space-y-4">
-          <p className="text-[13px] text-luma-muted">Ingresa el monto físico con el que abres la caja hoy.</p>
+          <p className="text-[13px] text-luma-muted">
+            Ingresa el monto físico con el que abres la caja hoy. Este valor se usará como saldo inicial del día.
+          </p>
           <Input
             label="Monto de apertura"
             type="number"
@@ -496,6 +655,12 @@ export default function Caja() {
             onChange={e => setOpenAmount(e.target.value)}
             autoFocus
           />
+          <div className="flex items-center gap-2 p-3 bg-teal-50 rounded-xl">
+            <CheckCircle2 size={14} className="text-teal-500 flex-shrink-0" />
+            <p className="text-[11px] text-teal-700">
+              La caja se cerrará automáticamente a las 23:59 si no la cierras manualmente.
+            </p>
+          </div>
         </div>
       </Modal>
 
@@ -504,7 +669,7 @@ export default function Caja() {
         footer={
           <div className="flex gap-2 justify-end">
             <Button variant="outline" onClick={() => setCloseModal(false)}>Cancelar</Button>
-            <Button variant="danger" loading={saving} onClick={handleClose}>Cerrar caja</Button>
+            <Button variant="danger" loading={saving} onClick={handleClose} icon={Lock}>Cerrar caja</Button>
           </div>
         }
       >
@@ -519,12 +684,17 @@ export default function Caja() {
             placeholder="Lo que hay en el cajón"
             value={countedAmount}
             onChange={e => setCountedAmount(e.target.value)}
-            hint={countedAmount && session ? `Diferencia: ${fmt(Number(countedAmount) - Number(session.current_cash))}` : ''}
+            hint={countedAmount && session
+              ? (() => {
+                  const diff = Number(countedAmount) - Number(session.current_cash)
+                  return `Diferencia: ${diff >= 0 ? '+' : ''}${fmt(diff)}`
+                })()
+              : ''}
             autoFocus
           />
           <div>
             <label className="text-[12px] font-semibold text-luma-text block mb-1.5">Nota de cierre</label>
-            <textarea rows={2} className="input-base resize-none" placeholder="Observaciones..."
+            <textarea rows={2} className="input-base resize-none" placeholder="Observaciones opcionales..."
               value={closeNote} onChange={e => setCloseNote(e.target.value)} />
           </div>
         </div>
@@ -557,10 +727,16 @@ export default function Caja() {
             value={mov.description}
             onChange={e => setMov(p => ({ ...p, description: e.target.value }))}
           />
-          <Select label="Medio de pago" value={mov.payment_method} onChange={e => setMov(p => ({ ...p, payment_method: e.target.value }))}>
-            <option value="cash">Efectivo</option>
-            <option value="transfer">Transferencia</option>
-            <option value="card">Tarjeta</option>
+          <Select label="Medio de pago" value={mov.payment_method}
+            onChange={e => setMov(p => ({ ...p, payment_method: e.target.value }))}>
+            {methods.length > 0
+              ? methods.map(({ key, label }) => <option key={key} value={key}>{label}</option>)
+              : <>
+                  <option value="cash">Efectivo</option>
+                  <option value="transfer">Transferencia</option>
+                  <option value="card">Tarjeta</option>
+                </>
+            }
           </Select>
         </div>
       </Modal>

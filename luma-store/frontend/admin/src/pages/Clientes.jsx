@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import toast from 'react-hot-toast'
 import { Users, Plus, Search, Star, RefreshCw, ShoppingBag } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import Modal from '../components/ui/Modal'
-import { PageLoader, EmptyState } from '../components/ui/Misc'
+import { PageLoader, EmptyState, Pagination } from '../components/ui/Misc'
 import { Badge } from '../components/ui/Badge'
 import * as svc from '../api/services'
 
@@ -180,34 +180,57 @@ function ViewCustomerModal({ customer, onEdit, onClose }) {
 }
 
 export default function Clientes() {
+  const PAGE_SIZE_CLIENTES = 50
+
   const [customers,    setCustomers]    = useState([])
   const [loading,      setLoading]      = useState(true)
-  const [search,       setSearch]       = useState('')
-  const [segment,      setSegment]      = useState('')   // filtro frontend por segmento
-  const [sortBy,       setSortBy]       = useState('')   // orden frontend
-  const [formData,     setFormData]     = useState(null) // null=closed, {}=new, customer=edit
+  const [page,         setPage]         = useState(1)
+  const [totalCount,   setTotalCount]   = useState(0)
+  const [stats,        setStats]        = useState({ total_count: 0, total_revenue: 0, total_points: 0 })
+  const [inputSearch,  setInputSearch]  = useState('')  // valor del input (inmediato)
+  const [search,       setSearch]       = useState('')  // valor debounced (dispara API)
+  const [segment,      setSegment]      = useState('')
+  const [sortBy,       setSortBy]       = useState('')
+  const [formData,     setFormData]     = useState(null)
   const [viewCustomer, setViewCustomer] = useState(null)
 
-  const load = useCallback(async () => {
+  // Debounce: solo dispara load() 350 ms después de que el usuario deja de tipear
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(inputSearch), 350)
+    return () => clearTimeout(t)
+  }, [inputSearch])
+
+  // Params compartidos entre load y otras llamadas
+  const filterParams = useMemo(() => {
+    const p = {}
+    if (search)  p.search   = search
+    if (segment) p.segment  = segment
+    if (sortBy)  p.order_by = sortBy
+    return p
+  }, [search, segment, sortBy])
+
+  const load = useCallback(async (p = 1) => {
+    setPage(p)
     setLoading(true)
     try {
-      const { data } = await svc.getCustomers({ search: search || undefined })
+      const params = { ...filterParams, page: p, page_size: PAGE_SIZE_CLIENTES }
+      const { data } = await svc.getCustomers(params)
       setCustomers(data?.results ?? data ?? [])
+      setTotalCount(data?.count ?? 0)
     } catch { toast.error('Error cargando clientes') }
     finally { setLoading(false) }
-  }, [search])
+  }, [filterParams])
 
-  useEffect(() => { load() }, [load])
+  // loadStats — totales globales (sin filtros) para el panel de KPIs
+  const loadStats = useCallback(async () => {
+    try {
+      const { data } = await svc.getCustomerStats()
+      setStats(data)
+    } catch {}
+  }, [])
 
-  // Filtro + orden frontend (segment es propiedad computada, no campo de BD)
-  const filtered = (() => {
-    let list = segment ? customers.filter(c => c.segment === segment) : customers
-    if (sortBy === 'name')      list = [...list].sort((a, b) => a.name.localeCompare(b.name, 'es'))
-    if (sortBy === 'purchases') list = [...list].sort((a, b) => (b.purchase_count || 0) - (a.purchase_count || 0))
-    if (sortBy === 'spent')     list = [...list].sort((a, b) => Number(b.total_purchases || 0) - Number(a.total_purchases || 0))
-    if (sortBy === 'points')    list = [...list].sort((a, b) => (b.points || 0) - (a.points || 0))
-    return list
-  })()
+  useEffect(() => { load(1)    }, [load])
+  useEffect(() => { loadStats() }, [loadStats])
 
   const handleSave = async (form, id) => {
     try {
@@ -219,14 +242,12 @@ export default function Clientes() {
         toast.success('Cliente creado')
       }
       setFormData(null)
-      load()
+      load(1)
+      loadStats()
     } catch (e) {
       toast.error(Object.values(e.response?.data || {}).flat()[0] || 'Error')
     }
   }
-
-  const totalRevenue = customers.reduce((s, c) => s + (Number(c.total_purchases) || 0), 0)
-  const totalPoints  = customers.reduce((s, c) => s + (Number(c.points) || 0), 0)
 
   if (loading) return <PageLoader />
 
@@ -236,9 +257,7 @@ export default function Clientes() {
         <div>
           <h2 className="page-title">Clientes</h2>
           <p className="text-[13px] text-luma-muted">
-            {filtered.length !== customers.length
-              ? `${filtered.length} de ${customers.length} clientes`
-              : `${customers.length} clientes registrados`}
+            {`${totalCount.toLocaleString('es-CO')} clientes registrados`}
           </p>
         </div>
         <Button variant="teal" icon={Plus} onClick={() => setFormData({})}>
@@ -249,10 +268,10 @@ export default function Clientes() {
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { label: 'Total clientes',   value: customers.length },
-          { label: 'Frecuentes',       value: customers.filter(c => c.segment === 'frequent').length },
-          { label: 'Ingresos totales', value: `$${(totalRevenue/1000).toFixed(1)}k` },
-          { label: 'Puntos activos',   value: totalPoints },
+          { label: 'Total clientes',   value: totalCount.toLocaleString('es-CO') },
+          { label: 'En esta página',   value: customers.length },
+          { label: 'Ingresos totales', value: `$${(stats.total_revenue / 1000).toFixed(1)}k` },
+          { label: 'Puntos activos',   value: stats.total_points.toLocaleString('es-CO') },
         ].map(k => (
           <div key={k.label} className="card p-4">
             <p className="section-label">{k.label}</p>
@@ -267,8 +286,8 @@ export default function Clientes() {
         <div className="relative flex-1 min-w-[180px]">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-luma-faint pointer-events-none z-10" />
           <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
+            value={inputSearch}
+            onChange={e => setInputSearch(e.target.value)}
             placeholder="Buscar por nombre o teléfono..."
             className="input-base !pl-9"
           />
@@ -289,15 +308,14 @@ export default function Clientes() {
           <option value="spent">Mayor gasto</option>
           <option value="points">Más puntos</option>
         </select>
-        <button onClick={load} className="btn-ghost" title="Actualizar"><RefreshCw size={15} /></button>
+        <button onClick={() => { load(1); loadStats() }} className="btn-ghost" title="Actualizar"><RefreshCw size={15} /></button>
       </div>
 
       {/* Table */}
       <div className="card overflow-hidden">
-        {filtered.length === 0 ? (
-          customers.length === 0
-            ? <EmptyState icon={Users} title="Sin clientes" description="Registra el primer cliente." action={<Button variant="teal" icon={Plus} size="sm" onClick={() => setFormData({})}>Nuevo cliente</Button>} />
-            : <EmptyState icon={Search} title="Sin resultados" description="Ningún cliente coincide con los filtros aplicados." />
+        {customers.length === 0 ? (
+          loading ? null :
+            <EmptyState icon={Users} title="Sin clientes" description="Registra el primer cliente." action={<Button variant="teal" icon={Plus} size="sm" onClick={() => setFormData({})}>Nuevo cliente</Button>} />
         ) : (
           <div className="overflow-x-auto">
             <table className="luma-table">
@@ -311,7 +329,7 @@ export default function Clientes() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(c => (
+                {customers.map(c => (
                   <CustomerRow key={c.id} customer={c} onView={(c) => { setViewCustomer(c); setFormData(null) }} />
                 ))}
               </tbody>
@@ -319,6 +337,13 @@ export default function Clientes() {
           </div>
         )}
       </div>
+
+      <Pagination
+        page={page}
+        totalCount={totalCount}
+        pageSize={PAGE_SIZE_CLIENTES}
+        onPageChange={load}
+      />
 
       {formData !== null && (
         <CustomerForm customer={formData?.id ? formData : null} onSave={handleSave} onClose={() => setFormData(null)} />

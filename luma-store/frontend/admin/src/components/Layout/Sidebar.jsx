@@ -1,13 +1,14 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '../../store/authContext'
 import toast from 'react-hot-toast'
 import {
   LayoutDashboard, Package, ShoppingCart, CreditCard,
   Users, BarChart2, Settings, LogOut, ChevronRight,
-  FileDown, Store, Zap,
+  FileDown, Store, Zap, ShoppingBag,
 } from 'lucide-react'
 import { downloadFile } from '../../utils/downloadFile'
+import { getStoreConfig } from '../../api/services'
 
 // roles: qué roles pueden ver este ítem. Si no se define = todos los autenticados
 const NAV_ITEMS = [
@@ -17,6 +18,7 @@ const NAV_ITEMS = [
   { to: '/ventas',         icon: ShoppingCart,    label: 'Ventas',        roles: ['owner','admin'] },
   { to: '/ventas-rapidas', icon: Zap,             label: 'Venta Rápida',  roles: ['owner','admin','seller'] },
   { to: '/pedidos',        icon: Store,           label: 'Pedidos',       roles: ['owner','admin'] },
+  { to: '/compras',        icon: ShoppingBag,     label: 'Compras',       roles: ['owner','admin'] },
   { to: '/clientes',       icon: Users,           label: 'Clientes',      roles: ['owner','admin'] },
   { to: '/reportes',       icon: BarChart2,       label: 'Reportes',      roles: ['owner','admin','viewer'] },
   { to: '/configuracion',  icon: Settings,        label: 'Configuración', roles: ['owner'] },
@@ -50,6 +52,13 @@ function NavItem({ item, onClick }) {
 export default function Sidebar({ mobileOpen, onClose }) {
   const { user, logout } = useAuth()
   const [exporting, setExporting] = useState(false)
+  const [storeInfo, setStoreInfo] = useState({ name: 'LUMA', logo: null })
+
+  useEffect(() => {
+    getStoreConfig()
+      .then(r => setStoreInfo({ name: r.data.name || 'LUMA', logo: r.data.logo || null }))
+      .catch(() => {})
+  }, [])
 
   const handleExport = async () => {
     setExporting(true)
@@ -82,11 +91,23 @@ export default function Sidebar({ mobileOpen, onClose }) {
         {/* Brand */}
         <div className="px-5 pt-6 pb-4 border-b border-luma-border">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 gradient-teal rounded-xl flex items-center justify-center flex-shrink-0">
-              <span className="text-white font-bold text-sm">L</span>
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden bg-cream-200">
+              {storeInfo.logo ? (
+                <img
+                  src={storeInfo.logo}
+                  alt={storeInfo.name}
+                  className="w-full h-full object-contain"
+                />
+              ) : (
+                <div className="w-full h-full gradient-teal flex items-center justify-center">
+                  <span className="text-white font-bold text-sm">
+                    {storeInfo.name?.[0]?.toUpperCase() || 'L'}
+                  </span>
+                </div>
+              )}
             </div>
             <div>
-              <p className="text-[13px] font-bold text-luma-text tracking-tight leading-none">LUMA</p>
+              <p className="text-[13px] font-bold text-luma-text tracking-tight leading-none">{storeInfo.name}</p>
               <p className="text-[10px] text-luma-faint mt-0.5 leading-none">Admin Console</p>
             </div>
           </div>

@@ -16,6 +16,10 @@ class CashSession(models.Model):
     )
     difference     = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     status         = models.CharField(max_length=10, choices=Status.choices, default=Status.OPEN)
+    auto_closed    = models.BooleanField(
+        default=False,
+        help_text="True si la sesión fue cerrada automáticamente por el sistema a la medianoche"
+    )
     note           = models.TextField(blank=True)
     opened_by      = models.ForeignKey(
         "users.User", on_delete=models.SET_NULL, null=True, related_name="opened_sessions"
@@ -36,6 +40,8 @@ class CashMovement(models.Model):
         EXPENSE = "expense", "Egreso"
         REFUND  = "refund",  "Devolución a cliente"
 
+    # Conservamos el enum como referencia de los métodos base.
+    # Sin choices para permitir métodos personalizados desde StoreConfig.
     class PaymentMethod(models.TextChoices):
         CASH     = "cash",      "Efectivo"
         TRANSFER = "transfer",  "Transferencia"
@@ -49,10 +55,16 @@ class CashMovement(models.Model):
     type           = models.CharField(max_length=10, choices=MovementType.choices)
     amount         = models.DecimalField(max_digits=12, decimal_places=2)
     description    = models.CharField(max_length=255)
-    payment_method = models.CharField(max_length=10, choices=PaymentMethod.choices, default=PaymentMethod.CASH)
+    payment_method = models.CharField(max_length=50, default="cash")  # sin choices → acepta métodos configurables
     reference_id   = models.PositiveIntegerField(null=True, blank=True)
     created_by     = models.ForeignKey("users.User", on_delete=models.SET_NULL, null=True, blank=True)
     created_at     = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["session", "type"], name="cash_mov_session_type_idx"),
+            models.Index(fields=["created_at"],      name="cash_mov_created_at_idx"),
+        ]
 
     def __str__(self):
         return f"{self.get_type_display()} ${self.amount} — {self.session.date}"

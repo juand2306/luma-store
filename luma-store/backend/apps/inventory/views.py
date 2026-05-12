@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from apps.users.permissions import IsOwnerAdminOrSeller
 from django_filters.rest_framework import DjangoFilterBackend
+from django.db.models import Q
 
 from .models import Category, Product, ProductImage, ProductVariant, StockMovement
 from .serializers import (
@@ -58,14 +59,16 @@ class CategoryViewSet(viewsets.ModelViewSet):
     permission_classes = [IsOwnerOrAdmin]
     filter_backends = [filters.SearchFilter]
     search_fields = ["name"]
+    # Las categorías son un árbol pequeño — no se pagina
+    pagination_class = None
 
     def get_queryset(self):
-        # list: solo categorías raíz activas (con subcategorías precargadas)
         if self.action == "list":
+            # Precarga 2 niveles de profundidad para que el serializer recursivo
+            # use el cache y no genere N+1 en subcategorías de subcategorías
             return Category.objects.filter(parent=None, is_active=True).prefetch_related(
-                "subcategories"
+                "subcategories__subcategories"
             ).order_by("order", "name")
-        # retrieve / update / partial_update / destroy: TODAS las categorías
         return Category.objects.all()
 
     def destroy(self, request, *args, **kwargs):
@@ -88,12 +91,83 @@ class ProductViewSet(viewsets.ModelViewSet):
     ordering_fields = ["name", "price", "created_at"]
 
     def get_queryset(self):
-        return Product.objects.prefetch_related("variants", "images").all()
+        from django.db.models import Sum, Q as DQ, F
+        qs = Product.objects.select_related("category").prefetch_related("variants", "images").all()
+        # Filtro adicional: low_stock=true → productos con stock > 0 y stock ≤ min_stock
+        if self.request.query_params.get("low_stock") == "true":
+            qs = qs.annotate(
+                _stock_total=Sum(
+                    "variants__stock",
+                    filter=DQ(variants__is_active=True),
+                )
+            ).filter(_stock_total__gt=0, _stock_total__lte=F("min_stock"))
+        return qs
 
     def get_serializer_class(self):
         if self.action == "list":
             return ProductListSerializer
         return ProductSerializer
+
+    @action(detail=False, methods=["get"])
+    def stats(self, request):
+        """
+        KPIs del catálogo completo (respeta los mismos filtros que la lista).
+        Devuelve totales sin paginar, para que los KPIs siempre muestren el global.
+        """
+        from django.db.models import Sum, Q as DQ, F, FloatField, ExpressionWrapper
+
+        # Aplicar los mismos filtros que el listado para que los KPIs sean coherentes
+        qs = Product.objects.all()
+        category   = request.query_params.get("category")
+        status_f   = request.query_params.get("status")
+        is_visible = request.query_params.get("is_visible")
+        search     = request.query_params.get("search")
+        low_stock  = request.query_params.get("low_stock")
+
+        if category:
+            qs = qs.filter(category=category)
+        if status_f:
+            qs = qs.filter(status=status_f)
+        if is_visible is not None:
+            qs = qs.filter(is_visible=(is_visible.lower() in ("true", "1")))
+        if search:
+            qs = qs.filter(DQ(name__icontains=search) | DQ(sku_base__icontains=search))
+
+        # Anota stock total por producto para calcular alertas
+        qs_annotated = qs.annotate(
+            _stock_total=Sum(
+                "variants__stock",
+                filter=DQ(variants__is_active=True),
+            )
+        )
+        if low_stock == "true":
+            qs_annotated = qs_annotated.filter(_stock_total__gt=0, _stock_total__lte=F("min_stock"))
+            qs = qs.filter(pk__in=qs_annotated.values("pk"))
+
+        total       = qs.count()
+        out_of_stock = qs.filter(status="out").count()
+        low_stock_count = qs_annotated.filter(
+            _stock_total__gt=0, _stock_total__lte=F("min_stock")
+        ).count()
+
+        # Valor total del inventario: Σ(variant.stock × product.price) para variantes activas
+        total_value = ProductVariant.objects.filter(
+            product__in=qs, is_active=True
+        ).aggregate(
+            val=Sum(
+                ExpressionWrapper(
+                    F("stock") * F("product__price"),
+                    output_field=FloatField()
+                )
+            )
+        )["val"] or 0
+
+        return Response({
+            "total":          total,
+            "out_of_stock":   out_of_stock,
+            "low_stock":      low_stock_count,
+            "total_value":    float(total_value),
+        })
 
     @action(detail=False, methods=["post"], url_path="import")
     def import_csv(self, request):
@@ -175,6 +249,7 @@ class ProductViewSet(viewsets.ModelViewSet):
         if not q:
             return Response([])
 
+        # Una sola query combinada con Q() — evita dos roundtrips a la DB
         variants = (
             ProductVariant.objects
             .select_related("product")
@@ -184,43 +259,27 @@ class ProductViewSet(viewsets.ModelViewSet):
                 product__status="active",
             )
             .filter(
-                product__name__icontains=q
+                Q(product__name__icontains=q) | Q(product__sku_base__icontains=q)
             )
-            .order_by("product__name", "size", "color")[:limit]
+            .order_by("product__name", "size", "color")
+            .distinct()[:limit]
         )
 
-        # También buscar por SKU base
-        variants_sku = (
-            ProductVariant.objects
-            .select_related("product")
-            .filter(
-                is_active=True,
-                stock__gt=0,
-                product__status="active",
-                product__sku_base__icontains=q,
-            )
-            .order_by("product__name")[:limit]
-        )
-
-        # Unir y deduplicar
-        seen = set()
         result = []
-        for v in list(variants) + list(variants_sku):
-            if v.id not in seen:
-                seen.add(v.id)
-                price = v.price if v.price else v.product.price
-                result.append({
-                    "id":            v.id,
-                    "product_id":    v.product_id,
-                    "product_name":  v.product.name,
-                    "sku_base":      v.product.sku_base,
-                    "size":          v.size,
-                    "color":         v.color,
-                    "stock":         v.stock,
-                    "effective_price": str(price),
-                    "product_price": str(v.product.price),
-                })
-        return Response(result[:limit])
+        for v in variants:
+            price = v.price if v.price else v.product.price
+            result.append({
+                "id":              v.id,
+                "product_id":      v.product_id,
+                "product_name":    v.product.name,
+                "sku_base":        v.product.sku_base,
+                "size":            v.size,
+                "color":           v.color,
+                "stock":           v.stock,
+                "effective_price": str(price),
+                "product_price":   str(v.product.price),
+            })
+        return Response(result)
 
 
 class ProductVariantViewSet(viewsets.ModelViewSet):
@@ -294,7 +353,7 @@ class PublicProductListView(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         qs = Product.objects.filter(
             is_visible=True, status__in=["active", "out"]
-        ).prefetch_related("variants", "images")
+        ).select_related("category").prefetch_related("variants", "images")
         # Filtros adicionales desde query params
         size = self.request.query_params.get("size")
         color = self.request.query_params.get("color")
@@ -320,9 +379,11 @@ class PublicCategoryListView(viewsets.ReadOnlyModelViewSet):
     """Categorías con al menos un producto visible (para el portal)."""
     serializer_class = CategorySerializer
     permission_classes = [AllowAny]
+    # Árbol pequeño — no se pagina en el portal
+    pagination_class = None
 
     def get_queryset(self):
         return Category.objects.filter(
             is_active=True,
             products__is_visible=True
-        ).distinct().order_by("order", "name")
+        ).prefetch_related("subcategories__subcategories").distinct().order_by("order", "name")

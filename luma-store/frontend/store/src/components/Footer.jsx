@@ -29,7 +29,15 @@ export default function Footer() {
         {/* Marca */}
         <div>
           <div className="flex items-center gap-2 mb-3">
-            <Store className="w-5 h-5 text-white" />
+            {config.logo ? (
+              <img
+                src={config.logo}
+                alt={config.name}
+                className="h-8 w-auto max-w-[120px] object-contain brightness-0 invert"
+              />
+            ) : (
+              <Store className="w-5 h-5 text-white" />
+            )}
             <span className="text-white font-bold text-lg">{config.name}</span>
           </div>
           <p className="text-sm leading-relaxed">

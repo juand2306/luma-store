@@ -1,15 +1,17 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import toast from 'react-hot-toast'
 import {
   Store, RefreshCw, Clock, ChevronRight,
-  MessageCircle, ShoppingBag, CheckCircle2, Package
+  MessageCircle, ShoppingBag, CheckCircle2, Package, Search,
+  Bell, X, SlidersHorizontal
 } from 'lucide-react'
 import { buildWhatsAppUrl, buildOrderMessage } from '../utils/whatsapp'
 import { Button } from '../components/ui/Button'
 import Modal from '../components/ui/Modal'
-import { PageLoader, EmptyState } from '../components/ui/Misc'
+import { PageLoader, EmptyState, Pagination } from '../components/ui/Misc'
 import { StatusBadge } from '../components/ui/Badge'
 import * as svc from '../api/services'
+import { usePaymentMethods } from '../hooks/usePaymentMethods'
 
 const fmt = (n) => `$${Number(n || 0).toLocaleString('es-CO')}`
 
@@ -22,21 +24,19 @@ const STATUS_OPTIONS = [
   { value: 'cancelled',   label: '✕ Cancelar pedido' },
 ]
 
-const PAYMENT_OPTIONS = [
-  { value: 'cash',      label: '💵 Efectivo' },
-  { value: 'transfer',  label: '🏦 Transferencia' },
-  { value: 'nequi',     label: '🟣 Nequi' },
-  { value: 'daviplata', label: '🔴 Daviplata' },
-  { value: 'debit',     label: '💳 Tarjeta Débito' },
-  { value: 'credit',    label: '💳 Tarjeta Crédito' },
-  { value: 'other',     label: '🔄 Otro' },
-]
+// Iconos de respaldo por clave de método
+const METHOD_ICONS = {
+  cash: '💵', transfer: '🏦', nequi: '🟣', daviplata: '🔴',
+  debit: '💳', credit: '💳', other: '🔄',
+}
 
-const POLL_INTERVAL = 60000
+const POLL_INTERVAL    = 60000
+const PAGE_SIZE_PEDIDOS = 50
 
 // ── Mini-modal de confirmación de entrega ─────────────────────────────────────
 function DeliveryConfirmModal({ order, onConfirm, onCancel, loading }) {
   const [paymentMethod, setPaymentMethod] = useState('cash')
+  const { enabledMethods } = usePaymentMethods()
 
   return (
     <Modal
@@ -88,17 +88,17 @@ function DeliveryConfirmModal({ order, onConfirm, onCancel, loading }) {
             ¿Cómo pagó el cliente? <span className="text-red-500">*</span>
           </label>
           <div className="grid grid-cols-2 gap-2">
-            {PAYMENT_OPTIONS.map(p => (
+            {enabledMethods.map(({ key, label }) => (
               <button
-                key={p.value}
-                onClick={() => setPaymentMethod(p.value)}
+                key={key}
+                onClick={() => setPaymentMethod(key)}
                 className={`px-3 py-2.5 rounded-xl border text-[12px] font-medium text-left transition-all ${
-                  paymentMethod === p.value
+                  paymentMethod === key
                     ? 'border-teal-400 bg-teal-50 text-teal-700 shadow-sm'
                     : 'border-luma-border hover:border-teal-300 hover:bg-cream-50 text-luma-muted'
                 }`}
               >
-                {p.label}
+                {METHOD_ICONS[key] || '💰'} {label}
               </button>
             ))}
           </div>
@@ -117,19 +117,27 @@ function OrderCard({ order, onView }) {
     if (mins < 60) return `hace ${mins} min`
     const hrs = Math.floor(mins / 60)
     if (hrs < 24) return `hace ${hrs}h`
-    return new Date(order.created_at).toLocaleDateString('es-CO')
+    return new Date(order.created_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })
   }
 
   return (
     <div
       onClick={() => onView(order)}
-      className={`card p-4 hover:shadow-card-md transition-all duration-300 cursor-pointer group
-        ${isNew ? 'border-l-4 border-amber-400 bg-amber-50/30' : ''}`}
+      className={`card p-4 hover:shadow-card-md transition-all duration-200 cursor-pointer group relative overflow-hidden
+        ${isNew ? 'ring-1 ring-amber-300 bg-gradient-to-br from-amber-50/60 to-white' : 'hover:bg-cream-50/40'}`}
     >
-      <div className="flex items-start justify-between">
-        <div>
+      {/* Franja lateral para nuevos */}
+      {isNew && (
+        <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-400 rounded-l-xl" />
+      )}
+
+      <div className="flex items-start justify-between gap-3">
+        {/* Izquierda */}
+        <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <p className="font-mono text-[12px] font-bold text-teal-600">{order.number}</p>
+            <span className="font-mono text-[11px] font-bold text-teal-600 bg-teal-50 px-1.5 py-0.5 rounded">
+              {order.number}
+            </span>
             <StatusBadge status={order.status} />
             {order.sale_number && (
               <span className="text-[10px] font-mono bg-teal-50 text-teal-600 border border-teal-200 rounded px-1.5 py-0.5">
@@ -137,22 +145,27 @@ function OrderCard({ order, onView }) {
               </span>
             )}
           </div>
-          <p className="text-[13px] font-semibold text-luma-text mt-1">
-            {order.customer_name || 'Anónimo'}
+          <p className="text-[13px] font-semibold text-luma-text mt-2 truncate">
+            {order.customer_name || 'Cliente anónimo'}
           </p>
           {order.customer_phone && (
-            <p className="text-[11px] text-luma-faint">{order.customer_phone}</p>
+            <p className="text-[11px] text-luma-faint mt-0.5">{order.customer_phone}</p>
           )}
         </div>
-        <div className="text-right">
-          <p className="text-[14px] font-bold text-luma-text">{fmt(order.total)}</p>
+
+        {/* Derecha */}
+        <div className="text-right flex-shrink-0">
+          <p className="text-[15px] font-bold text-luma-text">{fmt(order.total)}</p>
           <p className="text-[10px] text-luma-faint mt-1 flex items-center gap-1 justify-end">
-            <Clock size={10} />{timeAgo()}
+            <Clock size={9} /> {timeAgo()}
           </p>
         </div>
       </div>
-      <div className="mt-3 flex items-center justify-between">
-        <p className="text-[11px] text-luma-muted">{order.item_count} producto(s)</p>
+
+      <div className="mt-3 pt-2.5 border-t border-luma-border flex items-center justify-between">
+        <p className="text-[11px] text-luma-faint">
+          <span className="font-medium text-luma-muted">{order.item_count}</span> producto(s)
+        </p>
         <ChevronRight size={13} className="text-luma-faint group-hover:text-teal-500 transition-colors" />
       </div>
     </div>
@@ -174,51 +187,91 @@ const STATUS_TEMPLATE_KEY = {
 export default function Pedidos() {
   const [orders,         setOrders]         = useState([])
   const [loading,        setLoading]        = useState(true)
+  const [page,           setPage]           = useState(1)
+  const [totalCount,     setTotalCount]     = useState(0)
+  const [stats,          setStats]          = useState({ total: 0, new: 0, in_progress: 0, done: 0 })
   const [filter,         setFilter]         = useState('')
+  const [inputSearch,    setInputSearch]    = useState('')  // inmediato
+  const [search,         setSearch]         = useState('')  // debounced
   const [detail,         setDetail]         = useState(null)
+  const [detailLoading,  setDetailLoading]  = useState(false)
   const [newStatus,      setNewStatus]      = useState('')
   const [saving,         setSaving]         = useState(false)
-  const [showDelivery,   setShowDelivery]   = useState(false) // mini-modal de confirmación
+  const [showDelivery,   setShowDelivery]   = useState(false)
   const [storeConfig,    setStoreConfig]    = useState(null)
 
   const prevCountRef = useRef(0)
 
-  const load = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true)
+  // Debounce: 350 ms tras dejar de tipear
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(inputSearch), 350)
+    return () => clearTimeout(t)
+  }, [inputSearch])
+
+  // Params compartidos entre load y loadStats
+  const filterParams = useMemo(() => {
+    const p = { status: filter || undefined }
+    if (search) p.search = search
+    return p
+  }, [filter, search])
+
+  const load = useCallback(async (p = 1, silent = false) => {
+    if (!silent) { setPage(p); setLoading(true) }
     try {
-      const { data } = await svc.getOrders({ status: filter || undefined })
+      const params = { ...filterParams, page: p, page_size: PAGE_SIZE_PEDIDOS }
+      const { data } = await svc.getOrders(params)
       const list = data?.results ?? data ?? []
-      setOrders(list)
+
+      // En modo silencioso (polling): solo actualizar el conteo de nuevos y mostrar
+      // el toast si corresponde — SIN reemplazar la página que el usuario está viendo
       const newCount = list.filter(o => o.status === 'new').length
-      if (silent && newCount > prevCountRef.current) {
-        toast(`🔔 ${newCount - prevCountRef.current} nuevo(s) pedido(s)`, { icon: '📦' })
+      if (silent) {
+        if (newCount > prevCountRef.current) {
+          toast(`🔔 ${newCount - prevCountRef.current} nuevo(s) pedido(s)`, { icon: '📦' })
+        }
+        prevCountRef.current = newCount
+        return
       }
+
+      setOrders(list)
+      setTotalCount(data?.count ?? 0)
       prevCountRef.current = newCount
     } catch { if (!silent) toast.error('Error cargando pedidos') }
     finally { if (!silent) setLoading(false) }
-  }, [filter])
+  }, [filterParams])
+
+  // loadStats — conteos reales del servidor (no limitados a la página actual)
+  const loadStats = useCallback(async () => {
+    try {
+      const { data } = await svc.getOrderStats(filterParams)
+      setStats(data)
+    } catch {}
+  }, [filterParams])
 
   // Cargar config de tienda una sola vez (para las plantillas de WhatsApp)
   useEffect(() => {
     svc.getStoreConfig()
       .then(({ data }) => setStoreConfig(data))
-      .catch(() => {}) // Si falla, se usa el mensaje por defecto
+      .catch(() => {})
   }, [])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load(1)    }, [load])
+  useEffect(() => { loadStats() }, [loadStats])
   useEffect(() => {
-    const interval = setInterval(() => load(true), POLL_INTERVAL)
+    const interval = setInterval(() => load(1, true), POLL_INTERVAL)
     return () => clearInterval(interval)
   }, [load])
 
   const openDetail = async (order) => {
+    setDetailLoading(true)
     try {
       const { data } = await svc.getOrder(order.id)
       setDetail(data)
-      // Si el estado actual es 'new' (no está en STATUS_OPTIONS), inicializar al primer paso
+      // Si el estado es 'new' (no en STATUS_OPTIONS), inicializar al primer paso
       const validStatus = STATUS_OPTIONS.find(s => s.value === data.status)
       setNewStatus(validStatus ? data.status : STATUS_OPTIONS[0].value)
     } catch { toast.error('Error al cargar pedido') }
+    finally { setDetailLoading(false) }
   }
 
   // Clic en "Actualizar" → si es entrega, abre el mini-modal; si no, guarda directo
@@ -245,7 +298,8 @@ export default function Pedidos() {
       }
       setDetail(null)
       setShowDelivery(false)
-      load()
+      load(1)
+      loadStats()
     } catch { toast.error('Error al actualizar') }
     finally { setSaving(false) }
   }
@@ -256,57 +310,179 @@ export default function Pedidos() {
 
   if (loading) return <PageLoader />
 
+  const hasActiveFilters = filter || inputSearch
+
   return (
-    <div className="space-y-5 animate-fade-up">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 animate-fade-up">
+
+      {/* ── Header ── */}
+      <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="page-title">Pedidos</h2>
           <p className="text-[13px] text-luma-muted mt-0.5">
-            {orders.length} pedidos · {newOrders.length} nuevos
+            {totalCount.toLocaleString('es-CO')} pedidos en total
+            {stats.new > 0 && (
+              <span className="ml-2 inline-flex items-center gap-1 text-amber-600 font-semibold">
+                <Bell size={11} />
+                {stats.new} nuevos
+              </span>
+            )}
           </p>
         </div>
-        <div className="flex gap-2">
-          <select value={filter} onChange={e => setFilter(e.target.value)} className="input-base w-40 text-[12px]">
-            <option value="">Todos</option>
-            <option value="new">Nuevos</option>
-            <option value="in_progress">En gestión</option>
-            <option value="confirmed">Confirmados</option>
-            <option value="preparing">En preparación</option>
-            <option value="shipped">Listos para entregar</option>
-            <option value="delivered">Entregados</option>
-            <option value="cancelled">Cancelados</option>
-          </select>
-          <button onClick={load} className="btn-ghost"><RefreshCw size={15} /></button>
+        <button
+          onClick={() => { load(1); loadStats() }}
+          className="btn-ghost p-2 mt-1 flex-shrink-0"
+          title="Actualizar"
+        >
+          <RefreshCw size={15} />
+        </button>
+      </div>
+
+      {/* ── KPIs ── */}
+      <div className="grid grid-cols-3 gap-3">
+        {/* Nuevos */}
+        <div className="card p-4 flex items-center gap-3 group hover:shadow-card-md transition-all duration-200">
+          <div className="w-10 h-10 bg-teal-50 rounded-xl flex items-center justify-center flex-shrink-0">
+            <Bell size={17} className="text-teal-500" />
+          </div>
+          <div className="min-w-0">
+            <p className="section-label">Nuevos</p>
+            <p className="text-[22px] font-bold text-teal-600 leading-tight mt-0.5">{stats.new}</p>
+          </div>
+          {stats.new > 0 && (
+            <span className="ml-auto w-2 h-2 bg-amber-400 rounded-full animate-pulse flex-shrink-0" />
+          )}
+        </div>
+        {/* En proceso */}
+        <div className="card p-4 flex items-center gap-3 hover:shadow-card-md transition-all duration-200">
+          <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center flex-shrink-0">
+            <Clock size={17} className="text-amber-500" />
+          </div>
+          <div>
+            <p className="section-label">En proceso</p>
+            <p className="text-[22px] font-bold text-amber-600 leading-tight mt-0.5">{stats.in_progress}</p>
+          </div>
+        </div>
+        {/* Completados */}
+        <div className="card p-4 flex items-center gap-3 hover:shadow-card-md transition-all duration-200">
+          <div className="w-10 h-10 bg-cream-200 rounded-xl flex items-center justify-center flex-shrink-0">
+            <CheckCircle2 size={17} className="text-luma-muted" />
+          </div>
+          <div>
+            <p className="section-label">Completados</p>
+            <p className="text-[22px] font-bold text-luma-muted leading-tight mt-0.5">{stats.done}</p>
+          </div>
         </div>
       </div>
 
-      {/* KPIs */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="card p-4 border-l-4 border-teal-500">
-          <p className="section-label">Nuevos</p>
-          <p className="text-2xl font-bold text-teal-600 mt-1">{newOrders.length}</p>
+      {/* ── Barra de filtros ── */}
+      <div className="card p-3 space-y-2.5">
+        <div className="flex flex-col sm:flex-row gap-2.5">
+          {/* Search */}
+          <div className="relative flex-1">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-luma-faint pointer-events-none z-10" />
+            <input
+              type="text"
+              placeholder="Buscar por número o cliente..."
+              value={inputSearch}
+              onChange={e => setInputSearch(e.target.value)}
+              className="input-base w-full pl-9"
+            />
+          </div>
+          {/* Status filter */}
+          <div className="relative">
+            <SlidersHorizontal size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-luma-faint pointer-events-none z-10" />
+            <select
+              value={filter}
+              onChange={e => setFilter(e.target.value)}
+              className="input-base pl-8 w-full sm:w-52 appearance-none"
+            >
+              <option value="">Todos los estados</option>
+              <option value="new">🔔 Nuevos</option>
+              <option value="in_progress">👀 En gestión</option>
+              <option value="confirmed">✓ Confirmados</option>
+              <option value="preparing">📦 En preparación</option>
+              <option value="shipped">✅ Listos para entregar</option>
+              <option value="delivered">🚚 Entregados</option>
+              <option value="cancelled">✕ Cancelados</option>
+            </select>
+          </div>
         </div>
-        <div className="card p-4 border-l-4 border-amber-400">
-          <p className="section-label">En proceso</p>
-          <p className="text-2xl font-bold text-amber-600 mt-1">{inProgress.length}</p>
-        </div>
-        <div className="card p-4 border-l-4 border-cream-400">
-          <p className="section-label">Completados</p>
-          <p className="text-2xl font-bold text-luma-muted mt-1">{done.length}</p>
-        </div>
+
+        {/* Active filter chips */}
+        {hasActiveFilters && (
+          <div className="flex items-center gap-2 flex-wrap pt-1 border-t border-luma-border">
+            <span className="text-[11px] text-luma-faint">Filtros:</span>
+            {filter && (
+              <button
+                onClick={() => setFilter('')}
+                className="inline-flex items-center gap-1 text-[11px] bg-teal-50 text-teal-700 border border-teal-200 px-2 py-0.5 rounded-lg hover:bg-teal-100 transition-colors"
+              >
+                {filter === 'new' ? '🔔 Nuevos'
+                  : filter === 'in_progress' ? '👀 En gestión'
+                  : filter === 'confirmed' ? '✓ Confirmados'
+                  : filter === 'preparing' ? '📦 Preparando'
+                  : filter === 'shipped' ? '✅ Listos'
+                  : filter === 'delivered' ? '🚚 Entregados'
+                  : '✕ Cancelados'}
+                <X size={10} />
+              </button>
+            )}
+            {inputSearch && (
+              <button
+                onClick={() => setInputSearch('')}
+                className="inline-flex items-center gap-1 text-[11px] bg-cream-100 text-luma-muted border border-luma-border px-2 py-0.5 rounded-lg hover:bg-cream-200 transition-colors"
+              >
+                "{inputSearch}" <X size={10} />
+              </button>
+            )}
+            <button
+              onClick={() => { setFilter(''); setInputSearch('') }}
+              className="text-[11px] text-luma-faint hover:text-red-500 transition-colors ml-auto"
+            >
+              Limpiar todo
+            </button>
+          </div>
+        )}
       </div>
 
       {orders.length === 0 ? (
-        <div className="card">
-          <EmptyState icon={Store} title="Sin pedidos" description="Los pedidos del portal online aparecerán aquí." />
+        <div className="card py-14 text-center">
+          <div className="w-14 h-14 bg-cream-200 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <Store size={24} className="text-luma-faint" />
+          </div>
+          <p className="text-[15px] font-semibold text-luma-text">Sin pedidos</p>
+          <p className="text-[13px] text-luma-muted mt-1">
+            {hasActiveFilters ? 'No hay pedidos con los filtros actuales' : 'Los pedidos del portal online aparecerán aquí'}
+          </p>
+          {hasActiveFilters && (
+            <button
+              onClick={() => { setFilter(''); setInputSearch('') }}
+              className="mt-3 text-[12px] text-teal-600 hover:underline"
+            >
+              Limpiar filtros
+            </button>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Columna izquierda: pendientes */}
           <div>
-            <p className="section-label mb-3">Nuevos & Pendientes</p>
-            <div className="space-y-3">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-2 h-2 rounded-full bg-amber-400" />
+              <p className="section-label">
+                Nuevos & Pendientes
+                {([...newOrders, ...inProgress].length > 0) && (
+                  <span className="ml-2 text-amber-600 font-bold">({[...newOrders, ...inProgress].length})</span>
+                )}
+              </p>
+            </div>
+            <div className="space-y-2.5">
               {[...newOrders, ...inProgress].length === 0 ? (
-                <div className="card p-6 text-center text-[12px] text-luma-faint">Sin pedidos pendientes ✓</div>
+                <div className="card p-8 text-center">
+                  <CheckCircle2 size={22} className="text-teal-400 mx-auto mb-2" />
+                  <p className="text-[12px] text-luma-faint">Sin pedidos pendientes ✓</p>
+                </div>
               ) : (
                 [...newOrders, ...inProgress].map(o => (
                   <OrderCard key={o.id} order={o} onView={openDetail} />
@@ -314,11 +490,23 @@ export default function Pedidos() {
               )}
             </div>
           </div>
+
+          {/* Columna derecha: finalizados */}
           <div>
-            <p className="section-label mb-3">Completados & Cancelados</p>
-            <div className="space-y-3">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-2 h-2 rounded-full bg-luma-faint" />
+              <p className="section-label">
+                Completados & Cancelados
+                {done.length > 0 && (
+                  <span className="ml-2 text-luma-faint font-bold">({done.length})</span>
+                )}
+              </p>
+            </div>
+            <div className="space-y-2.5">
               {done.length === 0 ? (
-                <div className="card p-6 text-center text-[12px] text-luma-faint">Aún no hay pedidos finalizados</div>
+                <div className="card p-8 text-center">
+                  <p className="text-[12px] text-luma-faint">Aún no hay pedidos finalizados</p>
+                </div>
               ) : (
                 done.map(o => <OrderCard key={o.id} order={o} onView={openDetail} />)
               )}
@@ -326,6 +514,13 @@ export default function Pedidos() {
           </div>
         </div>
       )}
+
+      <Pagination
+        page={page}
+        totalCount={totalCount}
+        pageSize={PAGE_SIZE_PEDIDOS}
+        onPageChange={load}
+      />
 
       {/* ── Modal de detalle ── */}
       {detail && (

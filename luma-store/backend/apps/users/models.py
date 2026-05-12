@@ -67,18 +67,27 @@ class StoreConfig(models.Model):
     class Meta:
         verbose_name = "Configuración de Tienda"
 
+    _CACHE_KEY = "store_config_singleton"
+    _CACHE_TTL = 300  # 5 minutos
+
     def save(self, *args, **kwargs):
-        # Asegurar singleton: siempre se guarda con pk=1
         self.pk = 1
         super().save(*args, **kwargs)
+        # Invalidar caché cuando la configuración cambia
+        from django.core.cache import cache
+        cache.delete(self._CACHE_KEY)
 
     @classmethod
     def get_config(cls):
-        obj, _ = cls.objects.get_or_create(pk=1, defaults={
-            "name": os.getenv("STORE_NAME", "Mi Tienda"),
-            "whatsapp": os.getenv("STORE_WHATSAPP", ""),
-            "primary_color": os.getenv("STORE_PRIMARY_COLOR", "#2E86C1"),
-        })
+        from django.core.cache import cache
+        obj = cache.get(cls._CACHE_KEY)
+        if obj is None:
+            obj, _ = cls.objects.get_or_create(pk=1, defaults={
+                "name": os.getenv("STORE_NAME", "Mi Tienda"),
+                "whatsapp": os.getenv("STORE_WHATSAPP", ""),
+                "primary_color": os.getenv("STORE_PRIMARY_COLOR", "#2E86C1"),
+            })
+            cache.set(cls._CACHE_KEY, obj, cls._CACHE_TTL)
         return obj
 
     def __str__(self):

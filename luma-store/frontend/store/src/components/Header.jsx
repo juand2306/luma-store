@@ -35,7 +35,15 @@ export default function Header() {
       <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between gap-4">
         {/* Logo / Nombre */}
         <Link to="/" className="flex items-center gap-2 flex-shrink-0">
-          <Store className="w-6 h-6 text-white" />
+          {config.logo ? (
+            <img
+              src={config.logo}
+              alt={config.name}
+              className="h-9 w-auto max-w-[140px] object-contain drop-shadow"
+            />
+          ) : (
+            <Store className="w-6 h-6 text-white" />
+          )}
           <span className="text-white font-bold text-lg leading-tight hidden sm:block">
             {config.name}
           </span>
