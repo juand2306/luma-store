@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import toast from 'react-hot-toast'
-import { Zap, Search, ShoppingCart, Plus, Minus, CreditCard, CheckCircle, X, User, UserPlus, Star } from 'lucide-react'
+import { Zap, Search, ShoppingCart, Plus, Minus, CreditCard, CheckCircle, X, User, UserPlus, Star, Banknote, ArrowLeftRight, Smartphone, CircleDollarSign, Home } from 'lucide-react'
 import { useAuth } from '../store/authContext'
 import { Link } from 'react-router-dom'
 import * as svc from '../api/services'
@@ -8,10 +8,14 @@ import { usePaymentMethods } from '../hooks/usePaymentMethods'
 
 const fmt = (n) => `$${Number(n || 0).toLocaleString('es-CO')}`
 
-// Iconos de respaldo por key
 const METHOD_ICONS = {
-  cash: '💵', transfer: '🏦', nequi: '🟣', daviplata: '🔴',
-  debit: '💳', credit: '💳', other: '💰',
+  cash:      Banknote,
+  transfer:  ArrowLeftRight,
+  nequi:     Smartphone,
+  daviplata: Smartphone,
+  debit:     CreditCard,
+  credit:    CreditCard,
+  other:     CircleDollarSign,
 }
 
 export default function VentaRapida() {
@@ -33,6 +37,9 @@ export default function VentaRapida() {
   const [newCustName,  setNewCustName]  = useState('')
   const [newCustPhone, setNewCustPhone] = useState('')
   const [savingCust,   setSavingCust]   = useState(false)
+  // Puntos de fidelidad
+  const [loyaltyConfig, setLoyaltyConfig] = useState(null)
+  const [pointsUsed,    setPointsUsed]    = useState(0)
 
   // Búsqueda de productos
   useEffect(() => {
@@ -45,6 +52,14 @@ export default function VentaRapida() {
     }, 300)
     return () => clearTimeout(t)
   }, [query])
+
+  // Cargar config de lealtad
+  useEffect(() => {
+    svc.getLoyaltyConfig().then(r => setLoyaltyConfig(r.data)).catch(() => {})
+  }, [])
+
+  // Reset puntos al cambiar cliente
+  useEffect(() => { setPointsUsed(0) }, [customer])
 
   // Búsqueda de clientes
   useEffect(() => {
@@ -77,7 +92,11 @@ export default function VentaRapida() {
 
   const subtotal = cart.reduce((s, i) =>
     s + (Number(i.variant.effective_price) || Number(i.variant.product_price) || 0) * i.quantity, 0)
-  const change = method === 'cash' && received ? Number(received) - subtotal : null
+  const pointsDiscount = pointsUsed > 0 && loyaltyConfig
+    ? pointsUsed * loyaltyConfig.value_per_point
+    : 0
+  const total  = Math.max(0, subtotal - pointsDiscount)
+  const change = method === 'cash' && received ? Number(received) - total : null
 
   const handleCreateCustomer = async () => {
     if (!newCustName.trim()) { toast.error('El nombre es obligatorio'); return }
@@ -99,15 +118,16 @@ export default function VentaRapida() {
     setSaving(true)
     try {
       const { data } = await svc.createSale({
-        items: cart.map(i => ({ variant_id: i.variant.id, quantity: i.quantity })),
+        items:         cart.map(i => ({ variant_id: i.variant.id, quantity: i.quantity })),
         payment_method: method,
         cash_received: method === 'cash' && received ? received : undefined,
-        customer: customer?.id || undefined,
+        customer:      customer?.id || undefined,
+        points_used:   pointsUsed > 0 ? pointsUsed : undefined,
       })
-      const pts = data.points_earned
-      toast.success(pts > 0
-        ? `¡Venta ${data.number} registrada! +${pts} pts`
-        : `¡Venta ${data.number} registrada!`)
+      const pts     = data.points_earned
+      const usedMsg = pointsUsed > 0 ? ` · -${pointsUsed} pts` : ''
+      const earnMsg = pts > 0 ? ` · +${pts} pts` : ''
+      toast.success(`¡Venta ${data.number} registrada!${usedMsg}${earnMsg}`)
       setDone(data)
       setCart([])
       setReceived('')
@@ -138,8 +158,9 @@ export default function VentaRapida() {
             <p className="text-[10px] text-luma-faint">{user?.first_name || user?.username}</p>
           </div>
         </div>
-        <Link to="/" className="text-[12px] text-luma-muted hover:text-teal-600 transition-colors">
-          Panel →
+        <Link to="/" className="flex items-center gap-1.5 text-[12px] text-luma-muted hover:text-teal-600 transition-colors">
+          <Home size={13} />
+          <span className="hidden sm:inline">Panel</span>
         </Link>
       </header>
 
@@ -242,8 +263,12 @@ export default function VentaRapida() {
                   <p className="font-bold text-[14px] text-teal-600">
                     {fmt((Number(v.effective_price) || Number(v.product_price)) * quantity)}
                   </p>
-                  <button onClick={() => removeFromCart(v.id)} className="text-[11px] text-red-400 hover:text-red-600 mt-0.5">
-                    Quitar
+                  <button
+                    onClick={() => removeFromCart(v.id)}
+                    className="mt-0.5 flex items-center justify-end text-red-400 hover:text-red-600 transition-colors"
+                    title="Quitar del carrito"
+                  >
+                    <X size={14} />
                   </button>
                 </div>
               </div>
@@ -338,23 +363,70 @@ export default function VentaRapida() {
               )}
             </div>
 
+            {/* Canje de puntos */}
+            {customer && loyaltyConfig?.is_enabled && customer.points >= (loyaltyConfig.min_points_redeem ?? 1) && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-[12px] font-semibold text-amber-800 flex items-center gap-1.5">
+                    <Star size={12} /> Canjear puntos
+                  </p>
+                  <span className="text-[11px] text-amber-600">
+                    {customer.points} pts · 1 pt = {fmt(loyaltyConfig.value_per_point)}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    max={Math.min(customer.points, Math.floor(subtotal / loyaltyConfig.value_per_point))}
+                    value={pointsUsed || ''}
+                    onChange={e => {
+                      const max = Math.min(customer.points, Math.floor(subtotal / loyaltyConfig.value_per_point))
+                      setPointsUsed(Math.max(0, Math.min(Number(e.target.value) || 0, max)))
+                    }}
+                    placeholder="0 pts"
+                    className="input-base w-28 text-[14px] py-3"
+                  />
+                  {pointsDiscount > 0 ? (
+                    <span className="text-[13px] font-semibold text-green-600">= -{fmt(pointsDiscount)}</span>
+                  ) : (
+                    <span className="text-[12px] text-amber-600">ingresa puntos a canjear</span>
+                  )}
+                  {pointsUsed > 0 && (
+                    <button onClick={() => setPointsUsed(0)} className="ml-auto text-luma-faint hover:text-red-500">
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+                {pointsDiscount > 0 && (
+                  <p className="text-[12px] text-amber-700 font-medium">
+                    Total a cobrar: <span className="font-bold">{fmt(total)}</span>
+                    <span className="ml-1 text-amber-500 font-normal">(antes {fmt(subtotal)})</span>
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Método de pago */}
             <div>
               <p className="text-[12px] font-semibold text-luma-text mb-2">Método de pago</p>
-              <div className="grid grid-cols-3 gap-2">
-                {enabledMethods.map(({ key, label }) => (
-                  <button
-                    key={key}
-                    onClick={() => setMethod(key)}
-                    className={`py-3 rounded-xl text-[12px] font-semibold transition-all border
-                      ${method === key
-                        ? 'bg-teal-500 text-white border-teal-500 shadow-sm'
-                        : 'bg-cream-100 text-luma-text border-luma-border hover:bg-cream-200'}`}
-                  >
-                    <span className="block text-lg mb-0.5">{METHOD_ICONS[key] || '💰'}</span>
-                    {label}
-                  </button>
-                ))}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {enabledMethods.map(({ key, label }) => {
+                  const Icon = METHOD_ICONS[key] || CircleDollarSign
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => setMethod(key)}
+                      className={`py-3 rounded-xl text-[12px] font-semibold transition-all border flex flex-col items-center gap-1
+                        ${method === key
+                          ? 'bg-teal-500 text-white border-teal-500 shadow-sm'
+                          : 'bg-cream-100 text-luma-text border-luma-border hover:bg-cream-200'}`}
+                    >
+                      <Icon size={16} />
+                      {label}
+                    </button>
+                  )
+                })}
               </div>
             </div>
 
@@ -364,7 +436,7 @@ export default function VentaRapida() {
                 <label className="text-[12px] font-semibold text-luma-text block mb-1.5">Efectivo recibido</label>
                 <input
                   type="number"
-                  placeholder={String(subtotal)}
+                  placeholder={String(total)}
                   value={received}
                   onChange={e => setReceived(e.target.value)}
                   className="input-base text-[15px] py-3"
@@ -373,7 +445,7 @@ export default function VentaRapida() {
                   <p className="text-teal-600 font-bold text-[14px] mt-2">Vuelto: {fmt(change)}</p>
                 )}
                 {change !== null && change < 0 && (
-                  <p className="text-red-500 text-[13px] mt-2">Efectivo insuficiente</p>
+                  <p className="text-red-500 text-[13px] mt-2">Efectivo insuficiente (falta {fmt(Math.abs(change))})</p>
                 )}
               </div>
             )}
@@ -385,7 +457,7 @@ export default function VentaRapida() {
               className="w-full py-4 gradient-teal text-white font-bold text-[15px] rounded-2xl flex items-center justify-center gap-2 shadow-lg disabled:opacity-60 transition-all active:scale-[0.98]"
             >
               <CreditCard size={18} />
-              {saving ? 'Procesando...' : `Confirmar venta · ${fmt(subtotal)}`}
+              {saving ? 'Procesando...' : `Confirmar venta · ${fmt(total)}`}
             </button>
           </div>
         )}

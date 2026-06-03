@@ -20,8 +20,20 @@ export default function CartDrawer() {
 
   const handleCheckout = async (e) => {
     e.preventDefault();
-    setLoading(true);
     setError("");
+
+    // Validación front-end
+    if (!form.name.trim()) {
+      setError("Por favor ingresa tu nombre.");
+      return;
+    }
+    const digits = form.phone.replace(/\D/g, "");
+    if (digits.length < 7) {
+      setError("Por favor ingresa un número de celular válido.");
+      return;
+    }
+
+    setLoading(true);
 
     try {
       // 1. Crear el pedido en la BD
@@ -264,7 +276,7 @@ export default function CartDrawer() {
               <div className="space-y-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Nombre <span className="text-gray-400">(opcional)</span>
+                    Nombre <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -272,13 +284,14 @@ export default function CartDrawer() {
                     value={form.name}
                     onChange={handleFormChange}
                     placeholder="Tu nombre completo"
+                    required
                     className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     id="checkout-name"
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    WhatsApp <span className="text-gray-400">(opcional)</span>
+                    WhatsApp <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="tel"
@@ -286,6 +299,7 @@ export default function CartDrawer() {
                     value={form.phone}
                     onChange={handleFormChange}
                     placeholder="Ej: 3001234567"
+                    required
                     className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     id="checkout-phone"
                   />

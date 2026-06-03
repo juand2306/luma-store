@@ -56,6 +56,13 @@ class Order(models.Model):
         CANCELLED   = "cancelled",   "Cancelado"
 
     number         = models.CharField(max_length=20, unique=True)  # Ej: PED-00001
+    # FK al registro Customer deduplicado (null si pedido anónimo sin teléfono)
+    customer       = models.ForeignKey(
+        "customers.Customer",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="orders",
+    )
     customer_name  = models.CharField(max_length=150, blank=True)
     customer_phone = models.CharField(max_length=20, blank=True)
     note           = models.TextField(blank=True)

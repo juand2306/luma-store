@@ -38,7 +38,7 @@ class UserViewSet(viewsets.ModelViewSet):
         """No se elimina un usuario, solo se desactiva."""
         user = self.get_object()
         user.is_active = False
-        user.save()
+        user.save(update_fields=["is_active"])   # Solo actualiza el campo necesario
         return Response({"detail": "Usuario desactivado."}, status=status.HTTP_200_OK)
 
 

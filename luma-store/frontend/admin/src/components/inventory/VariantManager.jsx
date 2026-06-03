@@ -1,17 +1,18 @@
 import { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
-import { Plus, Trash2, Tag } from 'lucide-react'
+import { Plus, Trash2, Power } from 'lucide-react'
 import Modal from '../ui/Modal'
 import { Input } from '../ui/Input'
 import { Button } from '../ui/Button'
-import { ProgressBar } from '../ui/Misc'
+import { ProgressBar, ConfirmDialog } from '../ui/Misc'
 import * as svc from '../../api/services'
 
 export default function VariantManager({ product, onClose }) {
-  const [variants, setVariants] = useState([])
-  const [loading,  setLoading]  = useState(true)
-  const [newVar,   setNewVar]   = useState({ size: '', color: '', price: '', stock: 0 })
-  const [saving,   setSaving]   = useState(false)
+  const [variants,       setVariants]       = useState([])
+  const [loading,        setLoading]        = useState(true)
+  const [newVar,         setNewVar]         = useState({ size: '', color: '', price: '', stock: 0 })
+  const [saving,         setSaving]         = useState(false)
+  const [confirmDelete,  setConfirmDelete]  = useState(null)  // variant id | null
 
   const load = async () => {
     setLoading(true)
@@ -46,6 +47,8 @@ export default function VariantManager({ product, onClose }) {
       toast.success('Variante eliminada')
     } catch (e) {
       toast.error(e.response?.data?.detail || 'No se puede eliminar')
+    } finally {
+      setConfirmDelete(null)
     }
   }
 
@@ -57,7 +60,17 @@ export default function VariantManager({ product, onClose }) {
     } catch { toast.error('Error') }
   }
 
+  const toggleActive = async (variant) => {
+    const newActive = !variant.is_active
+    try {
+      await svc.updateVariant(variant.id, { is_active: newActive })
+      setVariants(prev => prev.map(v => v.id === variant.id ? { ...v, is_active: newActive } : v))
+      toast.success(newActive ? 'Variante activada' : 'Variante desactivada')
+    } catch { toast.error('Error al cambiar estado') }
+  }
+
   return (
+    <>
     <Modal
       open
       onClose={onClose}
@@ -79,7 +92,7 @@ export default function VariantManager({ product, onClose }) {
           <div className="space-y-2">
             <p className="section-label">Variantes existentes</p>
             {variants.map(v => (
-              <div key={v.id} className="flex items-center gap-3 p-3 bg-cream-100 rounded-xl group">
+              <div key={v.id} className={`flex items-center gap-3 p-3 rounded-xl group ${v.is_active === false ? 'bg-gray-100 opacity-70' : 'bg-cream-100'}`}>
                 <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-2 text-[12px]">
                   <div>
                     <span className="text-luma-faint block text-[10px]">Talla</span>
@@ -103,12 +116,22 @@ export default function VariantManager({ product, onClose }) {
                     <ProgressBar value={v.stock} max={Math.max(v.stock, 20)} className="mt-1" />
                   </div>
                 </div>
-                <button
-                  onClick={() => removeVariant(v.id)}
-                  className="opacity-0 group-hover:opacity-100 text-luma-faint hover:text-red-500 transition-all p-1"
-                >
-                  <Trash2 size={13} />
-                </button>
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                  <button
+                    onClick={() => toggleActive(v)}
+                    className={`p-1 rounded transition-colors ${v.is_active === false ? 'text-gray-400 hover:text-teal-500' : 'text-teal-500 hover:text-gray-400'}`}
+                    title={v.is_active === false ? 'Activar variante' : 'Desactivar variante'}
+                  >
+                    <Power size={13} />
+                  </button>
+                  <button
+                    onClick={() => setConfirmDelete(v.id)}
+                    className="text-luma-faint hover:text-red-500 transition-all p-1"
+                    title="Eliminar variante"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -158,5 +181,16 @@ export default function VariantManager({ product, onClose }) {
         </div>
       </div>
     </Modal>
+
+    <ConfirmDialog
+      open={!!confirmDelete}
+      title="Eliminar variante"
+      description="¿Eliminar esta variante? Se perderá su stock. Esta acción no se puede deshacer."
+      confirmLabel="Eliminar"
+      danger
+      onConfirm={() => removeVariant(confirmDelete)}
+      onCancel={() => setConfirmDelete(null)}
+    />
+    </>
   )
 }

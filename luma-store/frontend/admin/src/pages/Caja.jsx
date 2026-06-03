@@ -2,9 +2,9 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { usePaymentMethods } from '../hooks/usePaymentMethods'
 import toast from 'react-hot-toast'
 import {
-  CreditCard, Plus, Lock, Unlock, ArrowUpCircle, ArrowDownCircle,
-  RefreshCw, AlertCircle, ChevronDown, Bot, Info,
-  Clock, CheckCircle2,
+  Wallet, CreditCard, Plus, Lock, Unlock, ArrowUpCircle, ArrowDownCircle,
+  RefreshCw, AlertCircle, ChevronDown, Bot, Info, FileText,
+  Clock, CheckCircle2, TrendingUp, TrendingDown, RotateCcw, Calendar,
 } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import { Input, Select } from '../components/ui/Input'
@@ -21,7 +21,34 @@ function localDateString() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-// ── Movement row ──────────────────────────────────────────────────────────────
+// ── Movement mobile card (sm:hidden) ─────────────────────────────────────────
+function MovMobileCard({ mov }) {
+  const isIncome = mov.type === 'income'
+  const isRefund = mov.type === 'refund'
+  const Icon = isIncome ? ArrowUpCircle : ArrowDownCircle
+  const iconCls = isIncome ? 'text-teal-500' : isRefund ? 'text-amber-500' : 'text-red-400'
+  return (
+    <div className="flex items-center gap-3 px-4 py-3">
+      <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${isIncome ? 'bg-teal-50' : isRefund ? 'bg-amber-50' : 'bg-red-50'}`}>
+        <Icon size={14} className={iconCls} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-[12px] font-medium text-luma-text truncate">{mov.description || '—'}</p>
+        <div className="flex items-center gap-2 mt-0.5">
+          <span className="text-[10px] text-luma-faint uppercase tracking-wide">{mov.payment_method}</span>
+          <span className="text-[10px] text-luma-faint">
+            {new Date(mov.created_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
+          </span>
+        </div>
+      </div>
+      <span className={`text-[13px] font-bold flex-shrink-0 ${isIncome ? 'text-teal-600' : 'text-red-500'}`}>
+        {isIncome ? '+' : '-'}{fmt(mov.amount)}
+      </span>
+    </div>
+  )
+}
+
+// ── Movement row (desktop table) ──────────────────────────────────────────────
 function MovRow({ mov }) {
   const isIncome = mov.type === 'income'
   const isRefund = mov.type === 'refund'
@@ -50,6 +77,53 @@ function MovRow({ mov }) {
       </td>
       <td className="text-[11px] text-luma-muted">{mov.created_by_name || '—'}</td>
     </tr>
+  )
+}
+
+// ── History mobile card (sm:hidden) ──────────────────────────────────────────
+function HistoryMobileCard({ h, onView }) {
+  const diff = h.difference != null ? Number(h.difference) : null
+  const diffCls = diff === null ? '' : Math.abs(diff) < 1 ? 'text-teal-600' : diff > 0 ? 'text-green-600' : 'text-red-500'
+  const diffLabel = diff === null ? null : Math.abs(diff) < 1 ? '(cuadrado)' : diff > 0 ? '(sobrante)' : '(faltante)'
+  return (
+    <div
+      className={`px-4 py-3 cursor-pointer hover:bg-cream-50 transition-colors ${h.auto_closed ? 'bg-amber-50/30' : ''}`}
+      onClick={onView}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5">
+            <Calendar size={12} className="text-luma-faint flex-shrink-0" />
+            <p className="text-[13px] font-semibold text-luma-text">
+              {new Date(h.date + 'T00:00:00').toLocaleDateString('es-CO', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })}
+            </p>
+            {h.auto_closed && (
+              <span className="text-[9px] bg-amber-100 text-amber-700 font-semibold px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
+                <Bot size={9} /> Auto
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-3 mt-1 flex-wrap">
+            <span className="text-[11px] text-luma-faint">Apertura: <span className="text-luma-text font-medium">{fmt(h.opening_amount)}</span></span>
+            <span className="text-[11px] text-luma-faint">Calculado: <span className="text-luma-text font-medium">{fmt(h.closing_amount)}</span></span>
+          </div>
+          {diff !== null && (
+            <p className={`text-[11px] font-semibold mt-0.5 ${diffCls}`}>
+              Diferencia: {diff > 0 ? '+' : ''}{fmt(diff)} <span className="font-normal">{diffLabel}</span>
+            </p>
+          )}
+        </div>
+        <div className="flex-shrink-0 flex flex-col items-end gap-1">
+          <StatusBadge status={h.status} />
+          {h.closed_at && (
+            <span className="text-[10px] text-luma-faint flex items-center gap-0.5">
+              <Clock size={9} />
+              {new Date(h.closed_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -176,11 +250,14 @@ function HistoryDetailModal({ open, onClose, sessionId }) {
                     : Number(detail.difference) > 0 ? 'text-green-600' : 'text-red-500'
                   }>
                     {fmt(Math.abs(detail.difference))}
-                    {Number(detail.difference) > 0 ? ' (sobrante)' : Number(detail.difference) < 0 ? ' (faltante)' : ' ✓'}
+                    {Number(detail.difference) > 0 ? ' (sobrante)' : Number(detail.difference) < 0 ? ' (faltante)' : ' (cuadrado)'}
                   </span>
                 </p>
                 {detail.note && !detail.auto_closed && (
-                  <p className="text-[11px] text-luma-muted mt-0.5">📝 {detail.note}</p>
+                  <p className="text-[11px] text-luma-muted mt-0.5 flex items-center gap-1">
+                    <FileText size={11} className="flex-shrink-0" />
+                    {detail.note}
+                  </p>
                 )}
               </div>
             </div>
@@ -271,7 +348,7 @@ export default function Caja() {
       if (staleData.auto_closed_count > 0) {
         const count = staleData.auto_closed_count
         toast(
-          `🔒 ${count} sesión${count > 1 ? 'es' : ''} de día${count > 1 ? 's' : ''} anterior${count > 1 ? 'es' : ''} ${count > 1 ? 'fueron cerradas' : 'fue cerrada'} automáticamente`,
+          `${count} sesión${count > 1 ? 'es' : ''} de día${count > 1 ? 's' : ''} anterior${count > 1 ? 'es' : ''} ${count > 1 ? 'fueron cerradas' : 'fue cerrada'} automáticamente`,
           {
             duration: 6000,
             style: { background: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E' },
@@ -353,7 +430,7 @@ export default function Caja() {
     setSaving(true)
     try {
       await svc.closeSession(session.id, { counted_amount: countedAmount, note: closeNote })
-      toast.success('✅ Caja cerrada exitosamente')
+      toast.success('Caja cerrada exitosamente')
       setCloseModal(false)
       setCountedAmount('')
       setCloseNote('')
@@ -388,11 +465,16 @@ export default function Caja() {
     <div className="space-y-5 animate-fade-up">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <h2 className="page-title">Caja</h2>
-          <p className="text-[13px] text-luma-muted mt-0.5">
-            {new Date().toLocaleDateString('es-CO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-          </p>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-teal-50 rounded-2xl flex items-center justify-center flex-shrink-0">
+            <Wallet size={20} className="text-teal-600" />
+          </div>
+          <div>
+            <h1 className="page-title">Caja</h1>
+            <p className="text-[13px] text-luma-muted mt-0.5">
+              {new Date().toLocaleDateString('es-CO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            </p>
+          </div>
         </div>
         <div className="flex gap-2">
           {!session && (
@@ -438,17 +520,24 @@ export default function Caja() {
           {/* KPI cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {[
-              { label: 'Saldo actual',   value: fmt(session.current_cash),  color: 'text-teal-600',  bg: 'bg-teal-50' },
-              { label: 'Total ingresos', value: fmt(session.total_income),  color: 'text-green-600', bg: 'bg-green-50' },
-              { label: 'Total egresos',  value: fmt(session.total_expense), color: 'text-red-500',   bg: 'bg-red-50' },
-              { label: 'Devoluciones',   value: fmt(session.total_refund),  color: 'text-amber-600', bg: 'bg-amber-50' },
-            ].map(k => (
-              <div key={k.label} className={`card p-4 ${isOpen ? '' : 'opacity-75'}`}>
-                <p className="section-label">{k.label}</p>
-                <p className={`text-2xl font-bold mt-1 ${k.color}`}>{k.value}</p>
-                <div className={`mt-2 h-1.5 rounded-full ${k.bg}`} />
-              </div>
-            ))}
+              { label: 'Saldo actual',   value: fmt(session.current_cash),  color: 'text-teal-600',  icon: Wallet,       iconBg: 'bg-teal-50',   iconCls: 'text-teal-500' },
+              { label: 'Total ingresos', value: fmt(session.total_income),  color: 'text-green-600', icon: TrendingUp,   iconBg: 'bg-green-50',  iconCls: 'text-green-500' },
+              { label: 'Total egresos',  value: fmt(session.total_expense), color: 'text-red-500',   icon: TrendingDown, iconBg: 'bg-red-50',    iconCls: 'text-red-400' },
+              { label: 'Devoluciones',   value: fmt(session.total_refund),  color: 'text-amber-600', icon: RotateCcw,    iconBg: 'bg-amber-50',  iconCls: 'text-amber-500' },
+            ].map(k => {
+              const Icon = k.icon
+              return (
+                <div key={k.label} className={`card p-4 ${isOpen ? '' : 'opacity-75'}`}>
+                  <div className="flex items-start justify-between mb-2">
+                    <p className="section-label">{k.label}</p>
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${k.iconBg}`}>
+                      <Icon size={15} className={k.iconCls} />
+                    </div>
+                  </div>
+                  <p className={`text-2xl font-bold ${k.color}`}>{k.value}</p>
+                </div>
+              )
+            })}
           </div>
 
           {/* Closed diff info */}
@@ -463,7 +552,7 @@ export default function Caja() {
                   Contado: {fmt(session.counted_amount)} · Esperado: {fmt(session.closing_amount)} ·{' '}
                   <span className={Math.abs(session.difference ?? 0) < 1 ? 'text-teal-600' : 'text-amber-600'}>
                     Diferencia: {fmt(Math.abs(session.difference ?? 0))}
-                    {(session.difference ?? 0) > 0 ? ' (sobrante)' : (session.difference ?? 0) < 0 ? ' (faltante)' : ' ✓'}
+                    {(session.difference ?? 0) > 0 ? ' (sobrante)' : (session.difference ?? 0) < 0 ? ' (faltante)' : ' (cuadrado)'}
                   </span>
                 </p>
               </div>
@@ -490,7 +579,20 @@ export default function Caja() {
               <h3 className="text-[14px] font-semibold text-luma-text">Movimientos del día</h3>
               <span className="text-[11px] text-luma-faint">{session.movements?.length || 0} registros</span>
             </div>
-            <div className="overflow-x-auto">
+
+            {/* Mobile list */}
+            <div className="sm:hidden">
+              {!session.movements?.length ? (
+                <p className="text-center py-8 text-luma-faint text-[12px]">Sin movimientos aún</p>
+              ) : (
+                <div className="divide-y divide-luma-border">
+                  {session.movements.map(m => <MovMobileCard key={m.id} mov={m} />)}
+                </div>
+              )}
+            </div>
+
+            {/* Desktop table */}
+            <div className="hidden sm:block overflow-x-auto">
               <table className="luma-table">
                 <thead>
                   <tr>
@@ -517,8 +619,8 @@ export default function Caja() {
       {/* History */}
       {history.length > 0 && (
         <div className="card overflow-hidden">
-          <div className="px-5 py-4 border-b border-luma-border flex items-center justify-between">
-            <div className="flex items-center gap-2">
+          <div className="px-5 py-4 border-b border-luma-border flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <h3 className="text-[14px] font-semibold text-luma-text">Historial de cierres</h3>
               {history.some(h => h.auto_closed) && (
                 <span className="text-[10px] bg-amber-100 text-amber-700 font-semibold px-2 py-0.5 rounded-lg flex items-center gap-1">
@@ -527,10 +629,19 @@ export default function Caja() {
               )}
             </div>
             <span className="text-[11px] text-luma-faint">
-              {history.length} cierre{history.length !== 1 ? 's' : ''} · Haz clic en una fila para ver el detalle
+              {history.length} cierre{history.length !== 1 ? 's' : ''}
             </span>
           </div>
-          <div className="overflow-x-auto">
+
+          {/* Mobile cards */}
+          <div className="sm:hidden divide-y divide-luma-border">
+            {(showAllHistory ? history : history.slice(0, 10)).map(h => (
+              <HistoryMobileCard key={h.id} h={h} onView={() => setHistDetailId(h.id)} />
+            ))}
+          </div>
+
+          {/* Desktop table */}
+          <div className="hidden sm:block overflow-x-auto">
             <table className="luma-table">
               <thead>
                 <tr>
@@ -612,6 +723,7 @@ export default function Caja() {
               </tbody>
             </table>
           </div>
+
           {/* Ver más / Ver menos */}
           {history.length > 10 && (
             <div className="px-5 py-3 border-t border-luma-border flex justify-center">

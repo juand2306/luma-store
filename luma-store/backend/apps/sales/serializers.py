@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from .models import Sale, SaleItem, Return
 from apps.inventory.models import ProductVariant
-from apps.inventory.serializers import ProductVariantSerializer
+from apps.users.models import StoreConfig
 
 
 class SaleItemSerializer(serializers.ModelSerializer):
@@ -52,7 +52,9 @@ class SaleSerializer(serializers.ModelSerializer):
         read_only_fields = ["number", "sold_by", "created_at"]
 
     def get_sold_by_name(self, obj):
-        return obj.sold_by.get_full_name() if obj.sold_by else None
+        if not obj.sold_by:
+            return None
+        return obj.sold_by.get_full_name() or obj.sold_by.username
 
     def get_customer_name(self, obj):
         return obj.customer.name if obj.customer else None

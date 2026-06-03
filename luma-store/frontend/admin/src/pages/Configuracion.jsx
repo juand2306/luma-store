@@ -3,12 +3,13 @@ import toast from 'react-hot-toast'
 import {
   Settings, Store, MessageCircle, Users, Star, Save,
   Plus, Pencil, Trash2, Eye, EyeOff, ChevronDown,
-  Upload, X, CreditCard, ToggleLeft, ToggleRight,
+  Upload, X, CreditCard, Loader2,
+  Banknote, ArrowLeftRight, Smartphone, Wallet, CircleDollarSign,
 } from 'lucide-react'
 import { Button }              from '../components/ui/Button'
 import { Input, Textarea }     from '../components/ui/Input'
 import Modal                   from '../components/ui/Modal'
-import { PageLoader }          from '../components/ui/Misc'
+import { PageLoader, ConfirmDialog } from '../components/ui/Misc'
 import * as svc                from '../api/services'
 import { invalidatePaymentMethodsCache } from '../hooks/usePaymentMethods'
 
@@ -17,7 +18,7 @@ function Tab({ id, active, label, icon: Icon, onClick }) {
   return (
     <button
       onClick={() => onClick(id)}
-      className={`flex items-center gap-2 px-4 py-2.5 text-[12px] font-semibold rounded-xl transition-all
+      className={`flex-shrink-0 flex items-center gap-2 px-4 py-2.5 text-[12px] font-semibold rounded-xl transition-all
         ${active ? 'bg-teal-500 text-white shadow-sm' : 'text-luma-muted hover:bg-cream-200 hover:text-luma-text'}`}
     >
       <Icon size={13} />
@@ -61,7 +62,7 @@ function LogoUploader({ currentLogo, onUploaded }) {
       onUploaded(data)
       setFile(null)
       setPreview(null)
-      toast.success('Logo actualizado ✓')
+      toast.success('Logo actualizado')
     } catch { toast.error('Error al subir el logo') }
     finally { setUploading(false) }
   }
@@ -164,7 +165,7 @@ function StoreSection({ config, onSave, onLogoChange }) {
         banner_text: form.banner_text, return_policy: form.return_policy,
       }
       await onSave(textFields)
-      toast.success('Configuración guardada ✓')
+      toast.success('Configuración guardada')
     } catch { toast.error('Error al guardar') }
     finally { setSaving(false) }
   }
@@ -230,23 +231,25 @@ function StoreSection({ config, onSave, onLogoChange }) {
 // ═══════════════════════════════════════════════════════════
 const DEFAULT_KEYS = ['cash', 'transfer', 'nequi', 'daviplata', 'debit', 'credit', 'other']
 
+// Íconos Lucide por método de pago
 const METHOD_ICONS = {
-  cash:      '💵',
-  transfer:  '🏦',
-  nequi:     '📱',
-  daviplata: '📲',
-  debit:     '💳',
-  credit:    '💳',
-  other:     '🔄',
+  cash:      Banknote,
+  transfer:  ArrowLeftRight,
+  nequi:     Smartphone,
+  daviplata: Smartphone,
+  debit:     CreditCard,
+  credit:    CreditCard,
+  other:     CircleDollarSign,
 }
 
 function PaymentsSection() {
-  const [methods,   setMethods]   = useState([])
-  const [loading,   setLoading]   = useState(true)
-  const [saving,    setSaving]    = useState(false)
-  const [modal,     setModal]     = useState(null)  // null | 'new' | method-object
-  const [editForm,  setEditForm]  = useState({ key: '', label: '', enabled: true })
-  const [changed,   setChanged]   = useState(false)
+  const [methods,        setMethods]        = useState([])
+  const [loading,        setLoading]        = useState(true)
+  const [saving,         setSaving]         = useState(false)
+  const [modal,          setModal]          = useState(null)
+  const [editForm,       setEditForm]       = useState({ key: '', label: '', enabled: true })
+  const [changed,        setChanged]        = useState(false)
+  const [confirmDelete,  setConfirmDelete]  = useState(null)  // key del método a eliminar
 
   const load = async () => {
     try {
@@ -263,9 +266,11 @@ function PaymentsSection() {
   const toggle = (key) =>
     mutate(ms => ms.map(m => m.key === key ? { ...m, enabled: !m.enabled } : m))
 
-  const remove = (key) => {
-    if (!window.confirm('¿Eliminar este método de pago?')) return
-    mutate(ms => ms.filter(m => m.key !== key))
+  const remove = (key) => setConfirmDelete(key)
+
+  const doRemove = () => {
+    mutate(ms => ms.filter(m => m.key !== confirmDelete))
+    setConfirmDelete(null)
   }
 
   const openAdd = () => {
@@ -297,12 +302,17 @@ function PaymentsSection() {
       await svc.updatePaymentMethods(methods)
       setChanged(false)
       invalidatePaymentMethodsCache()   // fuerza recarga en todos los módulos
-      toast.success('Métodos de pago guardados ✓')
+      toast.success('Métodos de pago guardados')
     } catch { toast.error('Error al guardar') }
     finally { setSaving(false) }
   }
 
-  if (loading) return <div className="py-8 text-center text-[12px] text-luma-faint">Cargando...</div>
+  if (loading) return (
+    <div className="py-10 flex items-center justify-center gap-2 text-luma-faint">
+      <Loader2 size={16} className="animate-spin" />
+      <span className="text-[12px]">Cargando métodos de pago…</span>
+    </div>
+  )
 
   const enabled  = methods.filter(m => m.enabled).length
   const disabled = methods.filter(m => !m.enabled).length
@@ -342,7 +352,7 @@ function PaymentsSection() {
             </button>
 
             {/* Icon + Info */}
-            <span className="text-lg flex-shrink-0 leading-none">{METHOD_ICONS[m.key] || '💰'}</span>
+            {(() => { const Icon = METHOD_ICONS[m.key] || Wallet; return <Icon size={16} className="flex-shrink-0 text-luma-muted" /> })()}
             <div className="flex-1 min-w-0">
               <p className={`text-[13px] font-semibold leading-tight ${m.enabled ? 'text-luma-text' : 'text-luma-faint'}`}>
                 {m.label}
@@ -398,6 +408,16 @@ function PaymentsSection() {
           </Button>
         </div>
       </div>
+
+      {/* Confirm eliminar método */}
+      <ConfirmDialog
+        open={!!confirmDelete}
+        title="Eliminar método de pago"
+        description={`¿Eliminar el método "${methods.find(m => m.key === confirmDelete)?.label || confirmDelete}"? Esta acción no se puede deshacer.`}
+        confirmLabel="Eliminar"
+        onConfirm={doRemove}
+        onCancel={() => setConfirmDelete(null)}
+      />
 
       {/* Modal add / edit */}
       {modal && (
@@ -486,7 +506,7 @@ function WhatsAppSection({ config, onSave }) {
     setSaving(true)
     try {
       await onSave(form)
-      toast.success('Plantillas guardadas ✓')
+      toast.success('Plantillas guardadas')
     } catch { toast.error('Error al guardar') }
     finally { setSaving(false) }
   }
@@ -556,12 +576,17 @@ function LoyaltySection() {
     setSaving(true)
     try {
       await svc.updateLoyaltyConfig(loyalty)
-      toast.success('Fidelización actualizada ✓')
+      toast.success('Fidelización actualizada')
     } catch { toast.error('Error al guardar') }
     finally { setSaving(false) }
   }
 
-  if (loading) return <div className="py-8 text-center text-luma-faint text-[12px]">Cargando...</div>
+  if (loading) return (
+    <div className="py-10 flex items-center justify-center gap-2 text-luma-faint">
+      <Loader2 size={16} className="animate-spin" />
+      <span className="text-[12px]">Cargando fidelización…</span>
+    </div>
+  )
 
   return (
     <div className="space-y-5">
@@ -638,12 +663,12 @@ function UsersSection() {
     try {
       if (modal === 'new') {
         await svc.createUser(form)
-        toast.success('Usuario creado ✓')
+        toast.success('Usuario creado')
       } else {
         const patch = { ...form }
         if (!patch.password) delete patch.password
         await svc.updateUser(modal.id, patch)
-        toast.success('Usuario actualizado ✓')
+        toast.success('Usuario actualizado')
       }
       setModal(null); load()
     } catch (e) {
@@ -659,7 +684,12 @@ function UsersSection() {
     } catch { toast.error('Error') }
   }
 
-  if (loading) return <div className="py-8 text-center text-luma-faint">Cargando...</div>
+  if (loading) return (
+    <div className="py-10 flex items-center justify-center gap-2 text-luma-faint">
+      <Loader2 size={16} className="animate-spin" />
+      <span className="text-[12px]">Cargando usuarios…</span>
+    </div>
+  )
 
   return (
     <>
@@ -792,13 +822,20 @@ export default function Configuracion() {
 
   return (
     <div className="space-y-5 animate-fade-up">
-      <div>
-        <h2 className="page-title">Configuración</h2>
-        <p className="text-[13px] text-luma-muted mt-0.5">Personaliza el sistema y administra tu equipo</p>
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 bg-teal-50 rounded-2xl flex items-center justify-center flex-shrink-0">
+          <Settings size={20} className="text-teal-600" />
+        </div>
+        <div>
+          <h1 className="page-title">Configuración</h1>
+          <p className="text-[13px] text-luma-muted mt-0.5">Personaliza el sistema y administra tu equipo</p>
+        </div>
       </div>
 
-      <div className="flex gap-1.5 flex-wrap">
-        {TABS.map(t => <Tab key={t.id} {...t} active={tab === t.id} onClick={setTab} />)}
+      <div className="overflow-x-auto -mx-1 px-1">
+        <div className="flex gap-1.5 min-w-max pb-0.5">
+          {TABS.map(t => <Tab key={t.id} {...t} active={tab === t.id} onClick={setTab} />)}
+        </div>
       </div>
 
       <div className="card p-6">

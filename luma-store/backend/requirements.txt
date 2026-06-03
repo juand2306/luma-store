@@ -1,10 +1,34 @@
-django>=5.0
-djangorestframework>=3.15
-djangorestframework-simplejwt>=5.3
-django-cors-headers>=4.3
-python-dotenv>=1.0
-pillow>=10.0
-django-filter>=23.0
-reportlab>=4.0
-openpyxl>=3.1
-django-storages>=1.14
+# ── Framework base ────────────────────────────────────────────────────────────
+django>=5.0,<6.0
+djangorestframework>=3.15,<4.0
+djangorestframework-simplejwt>=5.3,<6.0
+django-cors-headers>=4.3,<5.0
+django-filter>=23.0,<25.0
+
+# ── Entorno y configuración ───────────────────────────────────────────────────
+python-dotenv>=1.0,<2.0
+dj-database-url>=2.1,<3.0       # Parsea DATABASE_URL de Railway a config Django
+
+# ── Base de datos ─────────────────────────────────────────────────────────────
+psycopg2-binary>=2.9,<3.0       # Adaptador PostgreSQL para producción (Railway)
+
+# ── Servidor de producción ────────────────────────────────────────────────────
+gunicorn>=21.2,<23.0             # WSGI server para Railway
+whitenoise>=6.6,<7.0             # Sirve archivos estáticos sin nginx
+
+# ── Monitoreo de errores ──────────────────────────────────────────────────────
+sentry-sdk[django]>=2.0,<3.0    # Error tracking + performance monitoring
+
+# ── Caché ─────────────────────────────────────────────────────────────────────
+django-redis>=5.4,<6.0           # Caché Redis para producción
+redis>=5.0,<6.0                  # Cliente Redis (dependencia de django-redis)
+
+# ── Archivos e imágenes ───────────────────────────────────────────────────────
+pillow>=10.0,<12.0
+django-storages>=1.14,<2.0
+cloudinary>=1.36,<2.0                    # SDK de Cloudinary
+django-cloudinary-storage>=0.3,<1.0     # Integración con Django storage system
+
+# ── Reportes y exportación ────────────────────────────────────────────────────
+reportlab>=4.0,<5.0
+openpyxl>=3.1,<4.0

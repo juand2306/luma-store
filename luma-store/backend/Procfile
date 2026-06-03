@@ -1,0 +1,4 @@
+# Railway ejecuta "release" antes de iniciar el web server en cada deploy.
+# Esto garantiza que las migraciones y los estáticos siempre estén actualizados.
+release: python manage.py migrate --noinput && python manage.py collectstatic --noinput --clear
+web: gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 120 --log-level info

@@ -1,5 +1,14 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
+
+// Resetea el scroll al inicio en cada cambio de ruta
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }, [pathname]);
+  return null;
+}
 import { CartProvider } from "./context/CartContext";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
@@ -33,6 +42,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <ScrollToTop />
       <CartProvider>
         <div className="min-h-screen flex flex-col bg-store-bg">
           <Header config={config} />

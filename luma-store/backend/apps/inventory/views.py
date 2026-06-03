@@ -1,5 +1,6 @@
 import csv
 import io
+import unicodedata
 from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -79,20 +80,39 @@ class CategoryViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         category.is_active = False
-        category.save()
+        category.save(update_fields=["is_active"])
         return Response({"detail": "Categoría eliminada."}, status=status.HTTP_200_OK)
+
+
+def _expand_category_ids(category_id: int) -> list[int]:
+    """Devuelve el ID de la categoría y los IDs de todas sus subcategorías activas."""
+    sub_ids = list(
+        Category.objects.filter(parent_id=category_id, is_active=True)
+        .values_list("id", flat=True)
+    )
+    return [category_id] + sub_ids
 
 
 class ProductViewSet(viewsets.ModelViewSet):
     permission_classes = [IsOwnerOrAdmin]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ["category", "status", "is_visible", "is_featured"]
+    # "category" se maneja manualmente en get_queryset para soportar subcategorías
+    filterset_fields = ["status", "is_visible", "is_featured"]
     search_fields = ["name", "sku_base"]
     ordering_fields = ["name", "price", "created_at"]
 
     def get_queryset(self):
         from django.db.models import Sum, Q as DQ, F
-        qs = Product.objects.select_related("category").prefetch_related("variants", "images").all()
+        qs = Product.objects.select_related("category").prefetch_related("variants", "images").order_by("-created_at")
+
+        # Filtro de categoría con expansión a subcategorías
+        cat_id = self.request.query_params.get("category")
+        if cat_id:
+            try:
+                qs = qs.filter(category_id__in=_expand_category_ids(int(cat_id)))
+            except (ValueError, TypeError):
+                pass
+
         # Filtro adicional: low_stock=true → productos con stock > 0 y stock ≤ min_stock
         if self.request.query_params.get("low_stock") == "true":
             qs = qs.annotate(
@@ -342,29 +362,48 @@ class StockMovementViewSet(viewsets.ModelViewSet):
 
 # ── Endpoints Públicos del Portal ──────────────────────────────────────────────
 
+def _normalize_text(text: str) -> str:
+    """Quita acentos y pasa a minúsculas para comparación sin distinción de tildes."""
+    nfd = unicodedata.normalize("NFD", text.lower())
+    return "".join(c for c in nfd if unicodedata.category(c) != "Mn")
+
+
 class PublicProductListView(viewsets.ReadOnlyModelViewSet):
     """Catálogo público — solo productos visibles."""
     serializer_class = PublicProductSerializer
     permission_classes = [AllowAny]
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
-    filterset_fields = ["category", "is_featured"]
-    search_fields = ["name"]
+    # SearchFilter removido — usamos búsqueda Python para soporte de acentos y categoría
+    # "category" se maneja manualmente en get_queryset para soportar subcategorías
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ["is_featured"]
+    ordering_fields = ["name", "price", "created_at"]
+    ordering = ["name"]  # orden por defecto
 
     def get_queryset(self):
         qs = Product.objects.filter(
             is_visible=True, status__in=["active", "out"]
         ).select_related("category").prefetch_related("variants", "images")
+
+        # Filtro de categoría con expansión a subcategorías
+        cat_id = self.request.query_params.get("category")
+        if cat_id:
+            try:
+                qs = qs.filter(category_id__in=_expand_category_ids(int(cat_id)))
+            except (ValueError, TypeError):
+                pass
+
         # Filtros adicionales desde query params
-        size = self.request.query_params.get("size")
-        color = self.request.query_params.get("color")
-        min_price = self.request.query_params.get("min_price")
-        max_price = self.request.query_params.get("max_price")
+        # Soporte multi-valor: ?size=S&size=M  y  ?color=Rojo&color=Azul
+        sizes  = self.request.query_params.getlist("size")
+        colors = self.request.query_params.getlist("color")
+        min_price      = self.request.query_params.get("min_price")
+        max_price      = self.request.query_params.get("max_price")
         only_available = self.request.query_params.get("available")
 
-        if size:
-            qs = qs.filter(variants__size__iexact=size, variants__is_active=True)
-        if color:
-            qs = qs.filter(variants__color__iexact=color, variants__is_active=True)
+        if sizes:
+            qs = qs.filter(variants__size__in=sizes, variants__is_active=True)
+        if colors:
+            qs = qs.filter(variants__color__in=colors, variants__is_active=True)
         if min_price:
             qs = qs.filter(price__gte=min_price)
         if max_price:
@@ -372,7 +411,45 @@ class PublicProductListView(viewsets.ReadOnlyModelViewSet):
         if only_available == "true":
             qs = qs.filter(variants__stock__gt=0, variants__is_active=True)
 
-        return qs.distinct()
+        qs = qs.distinct()
+
+        # ── Búsqueda sin distinción de acentos (Python-side) ──────────────────
+        # SQLite no soporta unaccent. Filtramos en Python para que "pantalon"
+        # encuentre "Pantalón" y para buscar también por nombre de categoría.
+        search = self.request.query_params.get("search", "").strip()
+        if search:
+            q_norm = _normalize_text(search)
+            matching_ids = []
+            for p in qs:
+                fields = [
+                    p.name,
+                    p.description or "",
+                    p.sku_base or "",
+                    p.category.name if p.category else "",
+                ]
+                if any(q_norm in _normalize_text(f) for f in fields):
+                    matching_ids.append(p.id)
+            # Re-query para mantener el QuerySet evaluable (paginación, ordering)
+            qs = Product.objects.filter(
+                id__in=matching_ids
+            ).select_related("category").prefetch_related("variants", "images")
+
+        return qs
+
+    @action(detail=False, methods=["get"], url_path="filter-options", permission_classes=[AllowAny])
+    def filter_options(self, request):
+        """Devuelve tallas, colores y precio máximo para poblar el FilterPanel."""
+        from django.db.models import Max
+        from .models import ProductVariant as PV
+        # Solo variantes activas de productos visibles
+        base_qs = Product.objects.filter(is_visible=True, status__in=["active", "out"])
+        variants = PV.objects.filter(
+            product__in=base_qs, is_active=True
+        ).values_list("size", "color")
+        sizes  = sorted({s for s, _ in variants if s})
+        colors = sorted({c for _, c in variants if c})
+        max_price = base_qs.aggregate(max_p=Max("price"))["max_p"] or 0
+        return Response({"sizes": sizes, "colors": colors, "max_price": float(max_price)})
 
 
 class PublicCategoryListView(viewsets.ReadOnlyModelViewSet):

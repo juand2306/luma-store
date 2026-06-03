@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback } from 'react'
 import toast from 'react-hot-toast'
 import {
   BarChart2, RefreshCw, TrendingUp, ShoppingCart, Package, Calendar,
-  FileText, FileSpreadsheet, Printer, Users, Landmark, Filter,
+  FileText, FileSpreadsheet, Printer, Users, Landmark,
+  AlertTriangle, SlidersHorizontal,
 } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -56,24 +57,48 @@ function RangePicker({ value, onChange }) {
 // ─── ExportBar ──────────────────────────────────────────────
 function ExportBar({ onExcel, onCsv, onPdf, onRefresh, loading }) {
   return (
-    <div className="flex items-center gap-2 flex-wrap">
-      <Button variant="outline" size="sm" icon={FileSpreadsheet} loading={loading} onClick={onExcel}>Excel</Button>
-      <Button variant="outline" size="sm" icon={FileText}        loading={loading} onClick={onCsv}>CSV</Button>
-      <Button variant="outline" size="sm" icon={Printer}                          onClick={onPdf}>PDF</Button>
-      <button onClick={onRefresh} className="btn-ghost" title="Actualizar"><RefreshCw size={15}/></button>
+    <div className="flex items-center gap-1.5 flex-shrink-0">
+      <Button variant="outline" size="sm" icon={FileSpreadsheet} loading={loading} onClick={onExcel}>
+        <span className="hidden sm:inline">Excel</span>
+      </Button>
+      <Button variant="outline" size="sm" icon={FileText} loading={loading} onClick={onCsv}>
+        <span className="hidden sm:inline">CSV</span>
+      </Button>
+      <Button variant="outline" size="sm" icon={Printer} onClick={onPdf}>
+        <span className="hidden sm:inline">PDF</span>
+      </Button>
+      <div className="w-px h-5 bg-luma-border mx-0.5" />
+      <button onClick={onRefresh} className="btn-ghost p-2" title="Actualizar">
+        <RefreshCw size={15}/>
+      </button>
     </div>
   )
 }
 
 // ─── KPI card ───────────────────────────────────────────────
-function KpiCard({ label, value, icon: Icon, color = 'text-teal-600' }) {
+const KPI_STYLES = {
+  'text-teal-600':  { bg: 'bg-teal-50',   ic: 'text-teal-500'  },
+  'text-blue-600':  { bg: 'bg-blue-50',   ic: 'text-blue-500'  },
+  'text-amber-600': { bg: 'bg-amber-50',  ic: 'text-amber-500' },
+  'text-red-500':   { bg: 'bg-red-50',    ic: 'text-red-400'   },
+  'text-green-600': { bg: 'bg-green-50',  ic: 'text-green-500' },
+  'text-luma-text': { bg: 'bg-cream-200', ic: 'text-luma-muted'},
+}
+
+function KpiCard({ label, value, icon: Icon, color = 'text-teal-600', pulse = false }) {
+  const { bg, ic } = KPI_STYLES[color] || { bg: 'bg-cream-200', ic: 'text-luma-muted' }
   return (
-    <div className="card p-4">
-      <div className="flex items-center gap-2 mb-1">
-        {Icon && <Icon size={14} className="text-luma-faint"/>}
+    <div className="card p-4 flex items-center gap-3 hover:shadow-card-md transition-all duration-200">
+      {Icon && (
+        <div className={`w-10 h-10 ${bg} rounded-xl flex items-center justify-center flex-shrink-0`}>
+          <Icon size={17} className={ic} />
+        </div>
+      )}
+      <div className="min-w-0 flex-1">
         <p className="section-label">{label}</p>
+        <p className={`text-[19px] font-bold leading-tight mt-0.5 truncate ${color}`}>{value}</p>
       </div>
-      <p className={`text-xl font-bold mt-1 ${color} truncate`}>{value}</p>
+      {pulse && <span className="ml-auto w-2 h-2 bg-amber-400 rounded-full animate-pulse flex-shrink-0" />}
     </div>
   )
 }
@@ -109,32 +134,43 @@ function TopProductsBar({ products }) {
 //  TAB: VENTAS
 // ═══════════════════════════════════════════════════════════
 function TabVentas({ days, onDaysChange }) {
-  const [data,      setData]      = useState(null)
-  const [loading,   setLoading]   = useState(true)
-  const [exporting, setExporting] = useState(false)
-  const [payment,   setPayment]   = useState('')
+  const [data,       setData]      = useState(null)
+  const [loading,    setLoading]   = useState(true)
+  const [exporting,  setExporting] = useState(false)
+  const [payment,    setPayment]   = useState('')
+  const [fromDate,   setFromDate]  = useState('')
+  const [toDate,     setToDate]    = useState('')
   const { methods, labelsMap: PAYMENT_LABELS } = usePaymentMethods()
+
+  // Build query params: custom date range takes priority over `days`
+  const buildParams = useCallback(() => {
+    const params = {}
+    if (fromDate && toDate) {
+      params.from_date = fromDate
+      params.to_date   = toDate
+    } else {
+      params.days = days
+    }
+    if (payment) params.payment_method = payment
+    return params
+  }, [days, payment, fromDate, toDate])
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const params = { days }
-      if (payment) params.payment_method = payment
-      const { data: d } = await svc.getSalesReport(params)
+      const { data: d } = await svc.getSalesReport(buildParams())
       setData(d)
     } catch { toast.error('Error cargando reporte de ventas') }
     finally { setLoading(false) }
-  }, [days, payment])
+  }, [buildParams])
 
   useEffect(() => { load() }, [load])
 
   const doExport = async (format) => {
     setExporting(true)
     try {
-      const params = { file_format: format, days }
-      if (payment) params.payment_method = payment
-      await downloadFile('/api/v1/reports/export/sales/', params)
-      toast.success(`Excel descargado`)
+      await downloadFile('/api/v1/reports/export/sales/', { file_format: format, ...buildParams() })
+      toast.success(format === 'csv' ? 'CSV descargado' : 'Excel descargado')
     } catch { toast.error('Error al exportar') }
     finally { setExporting(false) }
   }
@@ -175,19 +211,45 @@ function TabVentas({ days, onDaysChange }) {
 
   const salesChart = (data?.sales_by_day||[]).map(d => ({
     ...d,
-    label: new Date(d.date).toLocaleDateString('es-CO',{day:'2-digit',month:'short'}),
+    // IMPORTANTE: agregar T12:00:00 evita que el navegador parsee la fecha
+    // como UTC midnight y la desplace al día anterior en timezones UTC-N.
+    label: new Date(d.date + 'T12:00:00').toLocaleDateString('es-CO',{day:'2-digit',month:'short'}),
   }))
 
   return (
     <div className="space-y-5">
       {/* Sub-toolbar */}
-      <div className="card p-4 flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between flex-wrap">
+      <div className="card p-3 flex flex-col sm:flex-row gap-2.5 items-start sm:items-center justify-between">
         <div className="flex items-center gap-3 flex-wrap">
-          <RangePicker value={days} onChange={onDaysChange}/>
-          <select value={payment} onChange={e=>setPayment(e.target.value)} className="input-base w-full sm:w-44">
-            <option value="">Todos los métodos</option>
-            {methods.map(({ key, label }) => <option key={key} value={key}>{label}</option>)}
-          </select>
+          <RangePicker value={fromDate ? null : days} onChange={(d) => { onDaysChange(d); setFromDate(''); setToDate('') }}/>
+          {/* Custom date range */}
+          <div className="flex items-center gap-1.5">
+            <input
+              type="date"
+              value={fromDate}
+              onChange={e => setFromDate(e.target.value)}
+              className="input-base w-36 text-[12px]"
+              title="Desde"
+            />
+            <span className="text-[11px] text-luma-faint">–</span>
+            <input
+              type="date"
+              value={toDate}
+              onChange={e => setToDate(e.target.value)}
+              className="input-base w-36 text-[12px]"
+              title="Hasta"
+            />
+            {(fromDate || toDate) && (
+              <button onClick={() => { setFromDate(''); setToDate('') }} className="text-xs text-luma-faint hover:text-red-500 px-1" title="Limpiar">✕</button>
+            )}
+          </div>
+          <div className="relative">
+            <SlidersHorizontal size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-luma-faint pointer-events-none z-10" />
+            <select value={payment} onChange={e=>setPayment(e.target.value)} className="input-base !pl-9 w-full sm:w-44 appearance-none">
+              <option value="">Todos los métodos</option>
+              {methods.map(({ key, label }) => <option key={key} value={key}>{label}</option>)}
+            </select>
+          </div>
         </div>
         <ExportBar loading={exporting} onExcel={()=>doExport('xlsx')} onCsv={()=>doExport('csv')} onPdf={doPdf} onRefresh={load}/>
       </div>
@@ -322,18 +384,24 @@ function TabInventario() {
   return (
     <div className="space-y-5">
       {/* Sub-toolbar */}
-      <div className="card p-4 flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between flex-wrap">
+      <div className="card p-3 flex flex-col sm:flex-row gap-2.5 items-start sm:items-center justify-between">
         <div className="flex items-center gap-3 flex-wrap">
-          <select value={category} onChange={e=>setCategory(e.target.value)} className="input-base w-full sm:w-44">
-            <option value="">Todas las categorías</option>
-            {(data?.categories||[]).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-          <select value={status} onChange={e=>setStatus(e.target.value)} className="input-base w-full sm:w-40">
-            <option value="">Todos los estados</option>
-            <option value="active">Activo</option>
-            <option value="out">Agotado</option>
-            <option value="inactive">Inactivo</option>
-          </select>
+          <div className="relative">
+            <SlidersHorizontal size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-luma-faint pointer-events-none z-10" />
+            <select value={category} onChange={e=>setCategory(e.target.value)} className="input-base !pl-9 w-full sm:w-44 appearance-none">
+              <option value="">Todas las categorías</option>
+              {(data?.categories||[]).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <div className="relative">
+            <SlidersHorizontal size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-luma-faint pointer-events-none z-10" />
+            <select value={status} onChange={e=>setStatus(e.target.value)} className="input-base !pl-9 w-full sm:w-40 appearance-none">
+              <option value="">Todos los estados</option>
+              <option value="active">Activo</option>
+              <option value="out">Agotado</option>
+              <option value="inactive">Inactivo</option>
+            </select>
+          </div>
         </div>
         <ExportBar loading={exporting} onExcel={()=>doExport('xlsx')} onCsv={()=>doExport('csv')} onPdf={doPdf} onRefresh={load}/>
       </div>
@@ -352,13 +420,31 @@ function TabInventario() {
           {(data?.out_of_stock > 0 || data?.low_stock > 0) && (
             <div className="flex gap-3 flex-wrap">
               {data.out_of_stock > 0 && (
-                <div className="card p-3 flex items-center gap-2 border-l-4 border-red-400">
-                  <span className="text-[12px] font-semibold text-red-600">{data.out_of_stock} producto(s) agotado(s)</span>
+                <div className="card p-3 flex items-center gap-2.5 relative overflow-hidden ring-1 ring-red-200 bg-gradient-to-br from-red-50/50 to-white flex-1 min-w-[200px]">
+                  <div className="absolute left-0 top-0 bottom-0 w-1 bg-red-400 rounded-l-xl" />
+                  <div className="w-8 h-8 bg-red-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <AlertTriangle size={14} className="text-red-500" />
+                  </div>
+                  <div>
+                    <p className="text-[12px] font-semibold text-red-700">
+                      {data.out_of_stock} producto{data.out_of_stock > 1 ? 's' : ''} agotado{data.out_of_stock > 1 ? 's' : ''}
+                    </p>
+                    <p className="text-[10px] text-red-500">Sin stock disponible</p>
+                  </div>
                 </div>
               )}
               {data.low_stock > 0 && (
-                <div className="card p-3 flex items-center gap-2 border-l-4 border-amber-400">
-                  <span className="text-[12px] font-semibold text-amber-600">{data.low_stock} producto(s) con stock bajo</span>
+                <div className="card p-3 flex items-center gap-2.5 relative overflow-hidden ring-1 ring-amber-200 bg-gradient-to-br from-amber-50/50 to-white flex-1 min-w-[200px]">
+                  <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-400 rounded-l-xl" />
+                  <div className="w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <AlertTriangle size={14} className="text-amber-500" />
+                  </div>
+                  <div>
+                    <p className="text-[12px] font-semibold text-amber-700">
+                      {data.low_stock} producto{data.low_stock > 1 ? 's' : ''} con stock bajo
+                    </p>
+                    <p className="text-[10px] text-amber-500">Revisar reabastecimiento</p>
+                  </div>
                 </div>
               )}
             </div>
@@ -474,13 +560,16 @@ function TabProductos({ days, onDaysChange }) {
 
   return (
     <div className="space-y-5">
-      <div className="card p-4 flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between flex-wrap">
+      <div className="card p-3 flex flex-col sm:flex-row gap-2.5 items-start sm:items-center justify-between">
         <div className="flex items-center gap-3 flex-wrap">
           <RangePicker value={days} onChange={onDaysChange}/>
-          <select value={category} onChange={e=>setCategory(e.target.value)} className="input-base w-full sm:w-44">
-            <option value="">Todas las categorías</option>
-            {(data?.categories||[]).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          <div className="relative">
+            <SlidersHorizontal size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-luma-faint pointer-events-none z-10" />
+            <select value={category} onChange={e=>setCategory(e.target.value)} className="input-base !pl-9 w-full sm:w-44 appearance-none">
+              <option value="">Todas las categorías</option>
+              {(data?.categories||[]).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
         </div>
         <ExportBar loading={exporting} onExcel={()=>doExport('xlsx')} onCsv={()=>doExport('csv')} onPdf={doPdf} onRefresh={load}/>
       </div>
@@ -624,7 +713,7 @@ function TabClientes({ days, onDaysChange }) {
 
   return (
     <div className="space-y-5">
-      <div className="card p-4 flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between flex-wrap">
+      <div className="card p-3 flex flex-col sm:flex-row gap-2.5 items-start sm:items-center justify-between">
         <RangePicker value={days} onChange={onDaysChange}/>
         <ExportBar loading={exporting} onExcel={()=>doExport('xlsx')} onCsv={()=>doExport('csv')} onPdf={doPdf} onRefresh={load}/>
       </div>
@@ -782,7 +871,7 @@ function TabCaja({ days, onDaysChange }) {
 
   return (
     <div className="space-y-5">
-      <div className="card p-4 flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between flex-wrap">
+      <div className="card p-3 flex flex-col sm:flex-row gap-2.5 items-start sm:items-center justify-between">
         <RangePicker value={days} onChange={onDaysChange}/>
         <ExportBar loading={exporting} onExcel={()=>doExport('xlsx')} onCsv={()=>doExport('csv')} onPdf={doPdf} onRefresh={load}/>
       </div>
@@ -906,25 +995,32 @@ export default function Reportes() {
   const [days, setDays] = useState(30)
 
   return (
-    <div className="space-y-5 animate-fade-up">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 animate-fade-up">
+      {/* ── Header ── */}
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 bg-teal-50 rounded-2xl flex items-center justify-center flex-shrink-0">
+          <BarChart2 size={20} className="text-teal-600" />
+        </div>
         <div>
-          <h2 className="page-title">Reportes</h2>
-          <p className="text-[13px] text-luma-muted">Métricas y análisis del negocio</p>
+          <h1 className="page-title">Reportes</h1>
+          <p className="text-[13px] text-luma-muted mt-0.5">Métricas y análisis del negocio</p>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 bg-cream-200 p-0.5 rounded-xl w-fit overflow-x-auto flex-wrap">
-        {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12px] font-semibold transition-all whitespace-nowrap
-              ${tab === t.id ? 'bg-white text-teal-600 shadow-sm' : 'text-luma-muted'}`}>
-            <t.icon size={13}/>
-            {t.label}
-          </button>
-        ))}
+      {/* ── Tabs ── */}
+      <div className="overflow-x-auto -mx-1 px-1">
+        <div className="flex gap-0.5 bg-cream-200 p-0.5 rounded-xl min-w-max">
+          {TABS.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[12px] font-semibold transition-all whitespace-nowrap flex-shrink-0
+                ${tab === t.id
+                  ? 'bg-white text-teal-600 shadow-sm'
+                  : 'text-luma-muted hover:text-luma-text'}`}>
+              <t.icon size={13}/>
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Tab content */}

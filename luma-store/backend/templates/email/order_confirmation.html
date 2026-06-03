@@ -1,0 +1,111 @@
+{% extends "email/base.html" %}
+{% block title %}Pedido recibido {{ order.number }}{% endblock %}
+
+{% block content %}
+
+<!-- Saludo -->
+<h2 style="margin:0 0 6px;font-size:22px;color:#111827;font-weight:700;">
+  🛍️ ¡Recibimos tu pedido!
+</h2>
+<p style="margin:0 0 28px;font-size:15px;color:#6b7280;line-height:1.7;">
+  Hola <strong style="color:#374151;">{{ customer.name }}</strong>, gracias por tu compra.
+  Aquí tienes el resumen de tu pedido.
+</p>
+
+<!-- Número de pedido -->
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+       style="background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb;
+              margin-bottom:28px;">
+  <tr>
+    <td style="padding:16px 20px;">
+      <p style="margin:0 0 2px;font-size:11px;color:#9ca3af;text-transform:uppercase;
+                letter-spacing:.07em;font-weight:600;">Número de pedido</p>
+      <p style="margin:0;font-size:20px;color:#111827;font-weight:700;letter-spacing:-.3px;">
+        {{ order.number }}
+      </p>
+    </td>
+  </tr>
+</table>
+
+<!-- Tabla de productos -->
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+       style="margin-bottom:24px;">
+
+  <!-- Encabezados -->
+  <tr style="border-bottom:2px solid #e5e7eb;">
+    <th align="left"
+        style="font-size:11px;color:#9ca3af;font-weight:600;text-transform:uppercase;
+               letter-spacing:.07em;padding:0 8px 10px 0;">
+      Producto
+    </th>
+    <th align="center"
+        style="font-size:11px;color:#9ca3af;font-weight:600;text-transform:uppercase;
+               letter-spacing:.07em;padding:0 8px 10px;width:50px;">
+      Cant.
+    </th>
+    <th align="right"
+        style="font-size:11px;color:#9ca3af;font-weight:600;text-transform:uppercase;
+               letter-spacing:.07em;padding:0 0 10px 8px;white-space:nowrap;">
+      Subtotal
+    </th>
+  </tr>
+
+  <!-- Filas de items -->
+  {% for item in items %}
+  <tr>
+    <td style="padding:14px 8px 14px 0;border-bottom:1px solid #f3f4f6;vertical-align:top;">
+      <p style="margin:0;font-size:14px;color:#111827;font-weight:600;">
+        {{ item.variant.product.name }}
+      </p>
+      <p style="margin:3px 0 0;font-size:12px;color:#9ca3af;">
+        Talla {{ item.variant.size }} &middot; {{ item.variant.color }}
+      </p>
+    </td>
+    <td align="center"
+        style="padding:14px 8px;border-bottom:1px solid #f3f4f6;
+               font-size:14px;color:#374151;vertical-align:top;">
+      {{ item.quantity }}
+    </td>
+    <td align="right"
+        style="padding:14px 0 14px 8px;border-bottom:1px solid #f3f4f6;
+               font-size:14px;color:#374151;vertical-align:top;white-space:nowrap;">
+      ${{ item.subtotal|floatformat:0 }}
+    </td>
+  </tr>
+  {% endfor %}
+
+  <!-- Total -->
+  <tr>
+    <td colspan="2" align="right"
+        style="padding:18px 8px 0;font-size:14px;color:#6b7280;font-weight:600;">
+      TOTAL
+    </td>
+    <td align="right"
+        style="padding:18px 0 0 8px;font-size:18px;color:#111827;font-weight:700;
+               white-space:nowrap;">
+      ${{ order.total|floatformat:0 }}
+    </td>
+  </tr>
+
+</table>
+
+<!-- Mensaje + CTA WhatsApp -->
+<p style="margin:0 0 20px;font-size:14px;color:#6b7280;line-height:1.7;">
+  Te notificaremos en cada paso del proceso. Si tienes alguna pregunta sobre
+  tu pedido, estamos a tu disposición.
+</p>
+
+<table role="presentation" cellpadding="0" cellspacing="0">
+  <tr>
+    <td style="border-radius:8px;background-color:#25D366;">
+      <a href="https://wa.me/{{ config.whatsapp }}"
+         style="display:inline-block;padding:13px 26px;
+                font-size:14px;font-weight:700;color:#ffffff;
+                text-decoration:none;letter-spacing:.01em;">
+        💬 &nbsp;Escríbenos por WhatsApp
+      </a>
+    </td>
+  </tr>
+</table>
+
+{% endblock %}

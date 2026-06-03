@@ -1,0 +1,26 @@
+¡Recibimos tu pedido!
+
+Hola {{ customer.name }}, gracias por tu compra en {{ config.name }}.
+Aquí tienes el resumen de tu pedido:
+
+══════════════════════════════
+Número de pedido: {{ order.number }}
+══════════════════════════════
+
+PRODUCTOS:
+{% for item in items %}
+  - {{ item.variant.product.name }}
+    Talla {{ item.variant.size }} · {{ item.variant.color }}
+    Cantidad: {{ item.quantity }}
+    Subtotal: ${{ item.subtotal|floatformat:0 }}
+{% endfor %}
+──────────────────────────────
+TOTAL: ${{ order.total|floatformat:0 }}
+══════════════════════════════
+
+Te notificaremos en cada paso del proceso.
+
+¿Tienes preguntas? Escríbenos por WhatsApp:
+https://wa.me/{{ config.whatsapp }}
+
+— {{ config.name }}

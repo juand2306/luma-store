@@ -3,7 +3,6 @@ from .views import (
     CategoryViewSet, ProductViewSet,
     ProductVariantViewSet, StockMovementViewSet,
     ProductImageViewSet,
-    PublicProductListView, PublicCategoryListView,
 )
 
 router = DefaultRouter()

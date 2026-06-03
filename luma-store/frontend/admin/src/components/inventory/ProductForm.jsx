@@ -94,13 +94,27 @@ export default function ProductForm({ product, categories, onSave, onClose }) {
 
   const set = (k, v) => setForm(prev => ({ ...prev, [k]: v }))
 
+  const MAX_IMAGES = 8
+
   const handleFileSelect = (e) => {
     const files = Array.from(e.target.files || [])
     if (!files.length) return
     const valid = files.filter(f => f.type.startsWith('image/'))
     if (valid.length < files.length) toast.error('Solo se permiten imágenes')
-    setNewImages(prev => [...prev, ...valid])
-    setPreviewUrls(prev => [...prev, ...valid.map(f => URL.createObjectURL(f))])
+
+    const currentTotal = existingImages.length + newImages.length
+    const remaining    = MAX_IMAGES - currentTotal
+    if (remaining <= 0) {
+      toast.error(`Límite de ${MAX_IMAGES} imágenes por producto alcanzado`)
+      e.target.value = ''
+      return
+    }
+    const toAdd = valid.slice(0, remaining)
+    if (toAdd.length < valid.length) {
+      toast.error(`Se agregaron ${toAdd.length} de ${valid.length} imágenes (máximo ${MAX_IMAGES} por producto)`)
+    }
+    setNewImages(prev  => [...prev,  ...toAdd])
+    setPreviewUrls(prev => [...prev, ...toAdd.map(f => URL.createObjectURL(f))])
     e.target.value = ''
   }
 
@@ -226,7 +240,7 @@ export default function ProductForm({ product, categories, onSave, onClose }) {
             <div className="grid grid-cols-2 gap-3">
               <Select label="Categoría" value={form.category} onChange={e => set('category', e.target.value)}>
                 <option value="">Sin categoría</option>
-                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {categories.map(c => <option key={c.id} value={c.id}>{c.displayName || c.name}</option>)}
               </Select>
               <div className="flex items-end pb-0.5">
                 <p className="text-[11px] text-luma-faint">
@@ -294,7 +308,12 @@ export default function ProductForm({ product, categories, onSave, onClose }) {
 
         {/* ── IMÁGENES ─────────────────────────────────────────────── */}
         <div>
-          <p className="section-label mb-3">Imágenes del producto</p>
+          <div className="flex items-center justify-between mb-3">
+            <p className="section-label">Imágenes del producto</p>
+            <span className={`text-[11px] font-semibold ${allImages.length >= MAX_IMAGES ? 'text-amber-600' : 'text-luma-faint'}`}>
+              {allImages.length}/{MAX_IMAGES} imágenes
+            </span>
+          </div>
           <div className="grid grid-cols-4 gap-2">
             {allImages.map((img, i) => (
               <div key={i} className="relative aspect-square bg-cream-100 rounded-xl overflow-hidden group">
@@ -313,15 +332,17 @@ export default function ProductForm({ product, categories, onSave, onClose }) {
                 </button>
               </div>
             ))}
-            {/* Botón agregar */}
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="aspect-square bg-cream-100 border-2 border-dashed border-luma-border rounded-xl flex flex-col items-center justify-center gap-1 hover:border-teal-400 hover:bg-teal-50 transition-colors text-luma-faint hover:text-teal-500"
-            >
-              <ImagePlus size={20} />
-              <span className="text-[10px] font-medium">Agregar</span>
-            </button>
+            {/* Botón agregar — oculto cuando se alcanza el límite */}
+            {allImages.length < MAX_IMAGES && (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="aspect-square bg-cream-100 border-2 border-dashed border-luma-border rounded-xl flex flex-col items-center justify-center gap-1 hover:border-teal-400 hover:bg-teal-50 transition-colors text-luma-faint hover:text-teal-500"
+              >
+                <ImagePlus size={20} />
+                <span className="text-[10px] font-medium">Agregar</span>
+              </button>
+            )}
           </div>
           <input
             ref={fileInputRef}
@@ -332,7 +353,7 @@ export default function ProductForm({ product, categories, onSave, onClose }) {
             className="hidden"
           />
           <p className="text-[11px] text-luma-faint mt-1.5">
-            La primera imagen sera la principal. Formatos: JPG, PNG, WEBP.
+            La primera imagen sera la principal. Formatos: JPG, PNG, WEBP. Máximo 8 imágenes.
           </p>
         </div>
 

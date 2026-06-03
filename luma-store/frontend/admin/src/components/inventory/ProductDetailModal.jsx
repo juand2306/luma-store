@@ -187,8 +187,6 @@ function MovementHistory({ productId }) {
 
   useEffect(() => { load(filter) }, [productId, filter])
 
-  const filtered = movements
-
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -212,13 +210,13 @@ function MovementHistory({ productId }) {
         <div className="space-y-1.5">
           {[1,2,3].map(i => <div key={i} className="h-12 bg-cream-100 rounded-xl animate-pulse" />)}
         </div>
-      ) : filtered.length === 0 ? (
+      ) : movements.length === 0 ? (
         <div className="py-8 text-center bg-cream-100 rounded-xl">
           <p className="text-[12px] text-luma-faint">Sin movimientos registrados</p>
         </div>
       ) : (
         <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
-          {filtered.map(m => {
+          {movements.map(m => {
             const mt = MOV_LABELS[m.type] || { label: m.type, cls: 'text-luma-muted', bg: 'bg-cream-100', icon: Box }
             const Icon = mt.icon
             const variantLabel = m.variant_display || ''
@@ -320,14 +318,14 @@ export default function ProductDetailModal({ product: initialProduct, categories
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4"
       style={{ background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(6px)' }}
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
     >
       <div className="w-full max-w-4xl bg-white rounded-2xl shadow-2xl flex flex-col max-h-[92vh] animate-scale-in overflow-hidden">
 
         {/* ── Header ── */}
-        <div className="flex items-start justify-between px-6 py-4 border-b border-luma-border flex-shrink-0">
+        <div className="flex items-start justify-between px-4 sm:px-6 py-4 border-b border-luma-border flex-shrink-0">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap mb-1">
               <StatusBadge status={product.status} />
@@ -349,24 +347,26 @@ export default function ProductDetailModal({ product: initialProduct, categories
         </div>
 
         {/* ── Tabs ── */}
-        <div className="flex gap-1 px-6 pt-3 border-b border-luma-border flex-shrink-0 bg-white">
-          {tabs.map(t => (
-            <button
-              key={t.key}
-              onClick={() => setActiveTab(t.key)}
-              className={`px-4 py-2 text-[12px] font-semibold rounded-t-xl transition-all border-b-2 -mb-px ${
-                activeTab === t.key
-                  ? 'text-teal-600 border-teal-500 bg-teal-50'
-                  : 'text-luma-muted border-transparent hover:text-luma-text'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
+        <div className="overflow-x-auto flex-shrink-0 bg-white border-b border-luma-border">
+          <div className="flex gap-1 px-6 pt-3 min-w-max">
+            {tabs.map(t => (
+              <button
+                key={t.key}
+                onClick={() => setActiveTab(t.key)}
+                className={`px-4 py-2 text-[12px] font-semibold rounded-t-xl transition-all border-b-2 -mb-px whitespace-nowrap flex-shrink-0 ${
+                  activeTab === t.key
+                    ? 'text-teal-600 border-teal-500 bg-teal-50'
+                    : 'text-luma-muted border-transparent hover:text-luma-text'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* ── Body ── */}
-        <div className="flex-1 overflow-y-auto px-6 py-5">
+        <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-5">
 
           {/* TAB: Información */}
           {activeTab === 'info' && (
@@ -415,9 +415,17 @@ export default function ProductDetailModal({ product: initialProduct, categories
                   <p className="text-[12px] text-amber-600">
                     Se activa cuando baje de <strong>{product.min_stock || 3} unidades</strong>
                   </p>
-                  {totalStock === 0 && <p className="text-[11px] text-red-600 font-bold mt-1">🔴 Producto agotado</p>}
+                  {totalStock === 0 && (
+                    <p className="text-[11px] text-red-600 font-bold mt-1 flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />
+                      Producto agotado
+                    </p>
+                  )}
                   {totalStock > 0 && totalStock <= (product.min_stock || 3) && (
-                    <p className="text-[11px] text-amber-700 font-bold mt-1">⚡ Stock por debajo del umbral</p>
+                    <p className="text-[11px] text-amber-700 font-bold mt-1 flex items-center gap-1">
+                      <AlertTriangle size={11} className="flex-shrink-0" />
+                      Stock por debajo del umbral
+                    </p>
                   )}
                 </div>
 
@@ -490,17 +498,17 @@ export default function ProductDetailModal({ product: initialProduct, categories
         </div>
 
         {/* ── Footer ── */}
-        <div className="px-6 py-4 border-t border-luma-border flex-shrink-0 bg-cream-50 flex items-center justify-between gap-2">
-          <div className="flex gap-2">
+        <div className="px-4 sm:px-6 py-3 border-t border-luma-border flex-shrink-0 bg-cream-50 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex gap-2 flex-wrap">
             <Button variant="outline" size="sm" icon={Box} onClick={() => { onMovement(product); onClose() }}>
-              Registrar movimiento
+              <span className="hidden sm:inline">Registrar </span>movimiento
             </Button>
             <Button variant="outline" size="sm" icon={Tag} onClick={() => { onVariants(product); onClose() }}>
               Variantes
             </Button>
           </div>
           <Button variant="teal" size="sm" icon={Edit2} onClick={() => { onEdit(product); onClose() }}>
-            Editar producto
+            Editar<span className="hidden sm:inline"> producto</span>
           </Button>
         </div>
       </div>

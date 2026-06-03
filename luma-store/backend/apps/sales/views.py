@@ -221,9 +221,10 @@ class SaleViewSet(viewsets.ModelViewSet):
                 unit_price=item["unit_price"],
                 subtotal=item["subtotal"],
             )
-            # Descontar stock
-            item["variant"].stock -= item["quantity"]
-            item["variant"].save()
+            # Descuento de stock atómico — evita race condition bajo concurrencia
+            ProductVariant.objects.filter(pk=item["variant"].pk).update(
+                stock=F("stock") - item["quantity"]
+            )
             # Movimiento de inventario tipo VENTA
             StockMovement.objects.create(
                 variant=item["variant"],
@@ -312,8 +313,10 @@ class ReturnViewSet(viewsets.ModelViewSet):
         movement_type = Return.ReturnType.RETURN
 
         # --- DEVOLUCIÓN ---
-        returned_variant.stock += returned_qty
-        returned_variant.save()
+        # Suma de stock atómica — evita race condition bajo concurrencia
+        ProductVariant.objects.filter(pk=returned_variant.pk).update(
+            stock=F("stock") + returned_qty
+        )
         # Si el producto estaba sin stock, reactivarlo
         Product.objects.filter(pk=returned_variant.product_id, status="out").update(status="active")
         StockMovement.objects.create(
@@ -341,9 +344,10 @@ class ReturnViewSet(viewsets.ModelViewSet):
             swapped_qty = data["swapped_quantity"]
             swapped_price = data["swapped_price"] or swapped_variant.get_price()
 
-            # Stock de la variante que sale
-            swapped_variant.stock -= swapped_qty
-            swapped_variant.save()
+            # Descuento de stock atómico para la variante que sale
+            ProductVariant.objects.filter(pk=swapped_variant.pk).update(
+                stock=F("stock") - swapped_qty
+            )
             # Actualizar estado del producto si se quedó sin stock
             has_stock = ProductVariant.objects.filter(
                 product_id=swapped_variant.product_id, is_active=True, stock__gt=0

@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="es" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>{% block title %}Notificación{% endblock %} — {{ config.name }}</title>
+  <!--[if mso]>
+  <noscript>
+    <xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml>
+  </noscript>
+  <![endif]-->
+</head>
+
+<body style="margin:0;padding:0;background-color:#f0f2f5;font-family:Arial,'Helvetica Neue',Helvetica,sans-serif;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
+
+  <!-- Fondo completo -->
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+         style="background-color:#f0f2f5;padding:32px 16px;">
+    <tr>
+      <td align="center" valign="top">
+
+        <!-- Tarjeta principal (máx 600px) -->
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0"
+               style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;
+                      overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.10);">
+
+          <!-- ── ENCABEZADO ── -->
+          <tr>
+            <td style="background-color:{{ config.primary_color }};padding:28px 36px;">
+              <h1 style="margin:0;font-size:22px;font-weight:700;color:#ffffff;
+                         letter-spacing:-0.3px;line-height:1.3;">
+                {{ config.name }}
+              </h1>
+            </td>
+          </tr>
+
+          <!-- ── CUERPO ── -->
+          <tr>
+            <td style="padding:36px 36px 28px;">
+              {% block content %}{% endblock %}
+            </td>
+          </tr>
+
+          <!-- ── PIE DE PÁGINA ── -->
+          <tr>
+            <td style="background-color:#f9fafb;padding:20px 36px;
+                       border-top:1px solid #e5e7eb;">
+              <p style="margin:0;font-size:12px;color:#9ca3af;text-align:center;line-height:1.7;">
+                Este mensaje fue enviado por <strong style="color:#6b7280;">{{ config.name }}</strong>.<br>
+                ¿Tienes preguntas? Escríbenos por
+                <a href="https://wa.me/{{ config.whatsapp }}"
+                   style="color:{{ config.primary_color }};text-decoration:none;font-weight:700;">
+                  WhatsApp
+                </a>.
+              </p>
+            </td>
+          </tr>
+
+        </table><!-- /Tarjeta -->
+
+        <!-- Espacio inferior -->
+        <p style="margin:20px 0 0;font-size:11px;color:#9ca3af;text-align:center;">
+          Recibiste este email porque realizaste una compra en {{ config.name }}.
+        </p>
+
+      </td>
+    </tr>
+  </table><!-- /Fondo -->
+
+</body>
+</html>

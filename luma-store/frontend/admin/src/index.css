@@ -32,6 +32,7 @@ html {
   scroll-behavior: smooth;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
 }
 
 body {
@@ -224,6 +225,8 @@ h1,h2,h3,h4,h5,h6 { font-family: "Inter", sans-serif; font-weight: 600; line-hei
   margin-left: var(--sidebar-w);
   min-height: 100vh;
   background: var(--bg);
+  overflow-x: hidden; /* Recharts ResponsiveContainer puede desbordar en mobile */
+  max-width: 100%;
 }
 
 /* ─── Mobile Responsive ──────────────────────────────────── */

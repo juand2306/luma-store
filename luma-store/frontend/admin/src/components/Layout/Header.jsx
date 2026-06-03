@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import {
   Search, Bell, Menu, X, Calendar, ShoppingBag, Package,
   Users, CheckCircle, LogOut, User, ChevronDown,
@@ -34,7 +34,7 @@ function formatDate() {
 }
 
 // ── Notification bell panel ────────────────────────────────────────────────────
-function NotificationPanel({ onClose }) {
+function NotificationPanel({ onClose, onCountUpdate }) {
   const navigate = useNavigate()
   const [orders,    setOrders]    = useState([])
   const [alerts,    setAlerts]    = useState([])
@@ -43,17 +43,22 @@ function NotificationPanel({ onClose }) {
   useEffect(() => {
     Promise.all([
       svc.getOrders({ status: 'new', page_size: 5 }).catch(() => ({ data: [] })),
-      svc.getProducts({ page_size: 100 }).catch(() => ({ data: [] })),
+      // Usar el filtro low_stock=true en lugar de volcar 100 productos
+      svc.getProducts({ low_stock: 'true', page_size: 10 }).catch(() => ({ data: [] })),
     ]).then(([oRes, pRes]) => {
       const ords = oRes.data?.results ?? oRes.data ?? []
       const prods = pRes.data?.results ?? pRes.data ?? []
       setOrders(Array.isArray(ords) ? ords.slice(0, 5) : [])
-      const stockAlerts = prods.filter(p => (p.total_stock ?? 0) <= (p.min_stock ?? 3) && p.status !== 'inactive')
-      setAlerts(stockAlerts.slice(0, 5))
+      setAlerts(Array.isArray(prods) ? prods.slice(0, 5) : [])
     }).finally(() => setLoading(false))
   }, [])
 
   const total = orders.length + alerts.length
+
+  // Propagar conteo actualizado al Header para que el badge sea preciso
+  useEffect(() => {
+    if (!loading) onCountUpdate?.(total)
+  }, [loading, total, onCountUpdate])
 
   return (
     <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-2xl shadow-card-md border border-luma-border z-50 overflow-hidden animate-scale-in">
@@ -107,7 +112,7 @@ function NotificationPanel({ onClose }) {
               {alerts.map(p => (
                 <button
                   key={p.id}
-                  onClick={() => { navigate('/inventario'); onClose() }}
+                  onClick={() => { navigate('/inventario', { state: { openProductId: p.id } }); onClose() }}
                   className="w-full flex items-start gap-3 px-4 py-3 hover:bg-cream-100 transition-colors text-left"
                 >
                   <Package size={14} className={`mt-0.5 flex-shrink-0 ${(p.total_stock ?? 0) === 0 ? 'text-red-500' : 'text-amber-500'}`} />
@@ -277,8 +282,30 @@ export default function Header({ onMenuToggle, mobileOpen }) {
   const location  = useLocation()
   const title     = PAGE_TITLES[location.pathname] || 'LUMA'
   const { user, logout } = useAuth()
-  const [panel,   setPanel]   = useState(null)   // null | 'search' | 'bell' | 'user'
+  const [panel,      setPanel]      = useState(null)   // null | 'search' | 'bell' | 'user'
+  const [notifCount, setNotifCount] = useState(0)
   const panelRef  = useRef(null)
+
+  // Polling ligero: cuenta pedidos nuevos + alertas de stock cada 90 s
+  const fetchCount = useCallback(async () => {
+    try {
+      const [oRes, sRes] = await Promise.all([
+        svc.getOrders({ status: 'new', page_size: 1 }).catch(() => ({ data: {} })),
+        // Usar el endpoint de stats para obtener el conteo de stock bajo sin cargar productos
+        svc.getProductStats({}).catch(() => ({ data: {} })),
+      ])
+      const newOrders = oRes.data?.count ?? (oRes.data?.results?.length ?? 0)
+      const stats     = sRes.data || {}
+      const alerts    = (stats.low_stock ?? 0) + (stats.out_of_stock ?? 0)
+      setNotifCount(newOrders + alerts)
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    fetchCount()
+    const id = setInterval(fetchCount, 90_000)
+    return () => clearInterval(id)
+  }, [fetchCount])
 
   const initials = user?.first_name
     ? `${user.first_name[0]}${user.last_name?.[0] || ''}`.toUpperCase()
@@ -350,9 +377,20 @@ export default function Header({ onMenuToggle, mobileOpen }) {
             title="Notificaciones"
           >
             <Bell size={16} />
-            <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-teal-500 rounded-full" />
+            {notifCount > 0 ? (
+              <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 bg-teal-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center px-1 leading-none pointer-events-none">
+                {notifCount > 9 ? '9+' : notifCount}
+              </span>
+            ) : (
+              <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-luma-border rounded-full" />
+            )}
           </button>
-          {panel === 'bell' && <NotificationPanel onClose={() => setPanel(null)} />}
+          {panel === 'bell' && (
+            <NotificationPanel
+              onClose={() => setPanel(null)}
+              onCountUpdate={setNotifCount}
+            />
+          )}
         </div>
 
         {/* User */}

@@ -62,13 +62,16 @@ class PurchaseReceiveSerializer(serializers.Serializer):
 
 class OrderItemSerializer(serializers.ModelSerializer):
     variant_display = serializers.SerializerMethodField()
-    product_name = serializers.SerializerMethodField()
+    product_name    = serializers.SerializerMethodField()
+    size            = serializers.SerializerMethodField()
+    color           = serializers.SerializerMethodField()
 
     class Meta:
         model = OrderItem
         fields = [
             "id", "variant", "variant_display", "product_name",
-            "quantity", "unit_price", "subtotal"
+            "size", "color",
+            "quantity", "unit_price", "subtotal",
         ]
 
     def get_variant_display(self, obj):
@@ -76,6 +79,12 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
     def get_product_name(self, obj):
         return obj.variant.product.name
+
+    def get_size(self, obj):
+        return obj.variant.size or ""
+
+    def get_color(self, obj):
+        return obj.variant.color or ""
 
 
 class OrderStatusHistorySerializer(serializers.ModelSerializer):
@@ -101,7 +110,8 @@ class OrderSerializer(serializers.ModelSerializer):
     class Meta:
         model = Order
         fields = [
-            "id", "number", "customer_name", "customer_phone", "note",
+            "id", "number",
+            "customer", "customer_name", "customer_phone", "note",
             "subtotal", "total", "status", "status_display",
             "attended_by", "attended_by_name",
             "payment_status", "payment_method",
@@ -109,7 +119,7 @@ class OrderSerializer(serializers.ModelSerializer):
             "created_at", "updated_at",
             "items", "history"
         ]
-        read_only_fields = ["number", "created_at", "updated_at", "attended_by"]
+        read_only_fields = ["number", "customer", "created_at", "updated_at", "attended_by"]
 
     def get_attended_by_name(self, obj):
         return obj.attended_by.get_full_name() if obj.attended_by else None
@@ -173,10 +183,19 @@ class StoreOrderItemSerializer(serializers.Serializer):
 
 class StoreOrderCreateSerializer(serializers.Serializer):
     """Crear pedido desde el portal de clientes (sin autenticación)."""
-    items = StoreOrderItemSerializer(many=True)
-    customer_name = serializers.CharField(max_length=150, required=False, allow_blank=True)
-    customer_phone = serializers.CharField(max_length=20, required=False, allow_blank=True)
-    note = serializers.CharField(required=False, allow_blank=True, default="")
+    items          = StoreOrderItemSerializer(many=True)
+    customer_name  = serializers.CharField(max_length=150)
+    customer_phone = serializers.CharField(max_length=20)
+    # Email opcional: si se proporciona, el cliente recibirá confirmación y
+    # actualizaciones de estado. Se almacena en el registro Customer.
+    customer_email = serializers.EmailField(required=False, allow_blank=True, default="")
+    note           = serializers.CharField(required=False, allow_blank=True, default="")
+
+    def validate_customer_phone(self, value):
+        digits = "".join(c for c in value if c.isdigit())
+        if len(digits) < 7:
+            raise serializers.ValidationError("Ingresa un número de celular válido (mínimo 7 dígitos).")
+        return value
 
     def validate_items(self, items):
         if not items:
@@ -203,6 +222,11 @@ class StoreOrderCreateSerializer(serializers.Serializer):
                     f"Stock insuficiente para {variant.product.name} "
                     f"talla {variant.size} color {variant.color}. "
                     f"Solo quedan {variant.stock} unidades."
+                )
+            if not variant.is_active:
+                raise serializers.ValidationError(
+                    f"La variante {variant.size}/{variant.color} de "
+                    f"{variant.product.name} no está disponible."
                 )
             if not variant.product.is_visible:
                 raise serializers.ValidationError(

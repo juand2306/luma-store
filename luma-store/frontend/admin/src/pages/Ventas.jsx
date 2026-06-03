@@ -1,18 +1,44 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import toast from 'react-hot-toast'
 import {
-  Plus, Search, ShoppingCart, RefreshCw, X, Minus,
-  User, FileText, Star, UserPlus, Link2, RotateCcw
+  Plus, Search, ShoppingCart, ShoppingBag, RefreshCw, X, Minus,
+  User, FileText, Star, UserPlus, RotateCcw, TrendingUp, DollarSign,
 } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import Modal from '../components/ui/Modal'
-import { PageLoader, EmptyState, Pagination } from '../components/ui/Misc'
+import { EmptyState, Pagination, SkeletonRow } from '../components/ui/Misc'
 import * as svc from '../api/services'
 import { usePaymentMethods } from '../hooks/usePaymentMethods'
 
 const fmt = (n) => `$${Number(n || 0).toLocaleString('es-CO')}`
 
-// ── Fila de venta en historial ────────────────────────────────────────────────
+// ── Tarjeta móvil de venta (sm:hidden) ───────────────────────────────────────
+function SaleMobileCard({ sale, onView, labelsMap = {} }) {
+  return (
+    <div
+      className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-cream-50 transition-colors"
+      onClick={() => onView(sale)}
+    >
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <p className="font-mono text-[12px] font-bold text-teal-600">{sale.number}</p>
+          <span className="text-[10px] bg-cream-200 text-luma-muted px-1.5 py-0.5 rounded font-medium uppercase tracking-wide">
+            {labelsMap[sale.payment_method] || sale.payment_method}
+          </span>
+        </div>
+        <p className="text-[12px] text-luma-text mt-0.5 truncate">
+          {sale.customer_name || <span className="italic text-luma-faint">Sin cliente</span>}
+        </p>
+        <p className="text-[10px] text-luma-faint mt-0.5">
+          {new Date(sale.created_at).toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+        </p>
+      </div>
+      <p className="text-[15px] font-bold text-teal-700 flex-shrink-0">{fmt(sale.total)}</p>
+    </div>
+  )
+}
+
+// ── Fila de venta en historial (desktop) ─────────────────────────────────────
 function SaleRow({ sale, onView, labelsMap = {} }) {
   return (
     <tr className="cursor-pointer hover:bg-cream-50 transition-colors" onClick={() => onView(sale)}>
@@ -143,7 +169,7 @@ function ReturnModal({ onSaved, onClose }) {
         if (swpPrice) payload.swapped_price = swpPrice
       }
       await svc.createReturn(payload)
-      toast.success(type === 'swap' ? 'Cambio registrado ✓' : 'Devolución registrada ✓')
+      toast.success(type === 'swap' ? 'Cambio registrado' : 'Devolución registrada')
       onSaved()
       onClose()
     } catch (e) {
@@ -286,8 +312,19 @@ function NewSaleModal({ onSaved, onClose }) {
   const [newCustName, setNewCustName]   = useState('')
   const [newCustPhone, setNewCustPhone] = useState('')
   const [savingCust, setSavingCust]     = useState(false)
+  // Puntos de fidelidad
+  const [loyaltyConfig, setLoyaltyConfig] = useState(null)
+  const [pointsToUse,   setPointsToUse]   = useState(0)
   const searchRef = useRef(null)
   const { enabledMethods } = usePaymentMethods()
+
+  // Cargar config de lealtad
+  useEffect(() => {
+    svc.getLoyaltyConfig().then(r => setLoyaltyConfig(r.data)).catch(() => {})
+  }, [])
+
+  // Reset puntos al cambiar de cliente
+  useEffect(() => { setPointsToUse(0) }, [customer])
 
   // ── Búsqueda optimizada de productos (endpoint POS) ─────────────────────────
   useEffect(() => {
@@ -335,7 +372,11 @@ function NewSaleModal({ onSaved, onClose }) {
     const price = Number(i.variant.effective_price) || Number(i.variant.product_price) || 0
     return s + price * i.quantity
   }, 0)
-  const change = method === 'cash' && received ? Number(received) - subtotal : null
+  const pointsDiscount = pointsToUse > 0 && loyaltyConfig
+    ? pointsToUse * loyaltyConfig.value_per_point
+    : 0
+  const total  = Math.max(0, subtotal - pointsDiscount)
+  const change = method === 'cash' && received ? Number(received) - total : null
 
   const handleCreateCustomer = async () => {
     if (!newCustName.trim()) { toast.error('El nombre es obligatorio'); return }
@@ -361,14 +402,15 @@ function NewSaleModal({ onSaved, onClose }) {
         items: cart.map(i => ({ variant_id: i.variant.id, quantity: i.quantity })),
         payment_method: method,
         note,
-        customer: customer?.id || undefined,
+        customer:      customer?.id || undefined,
         cash_received: method === 'cash' && received ? received : undefined,
+        points_used:   pointsToUse > 0 ? pointsToUse : undefined,
       }
       const { data } = await svc.createSale(payload)
       const pts = data.points_earned
-      toast.success(pts > 0
-        ? `Venta registrada · +${pts} puntos para ${customer?.name || 'cliente'}`
-        : 'Venta registrada ✓')
+      const usedMsg = pointsToUse > 0 ? ` · -${pointsToUse} pts` : ''
+      const earnMsg = pts > 0 ? ` · +${pts} pts` : ''
+      toast.success(`Venta registrada${usedMsg}${earnMsg}`)
       onSaved()
       onClose()
     } catch (e) {
@@ -402,7 +444,7 @@ function NewSaleModal({ onSaved, onClose }) {
             <div className="flex gap-2 justify-end">
               <Button variant="outline" onClick={onClose}>Cancelar</Button>
               <Button variant="teal" loading={saving} onClick={handleSubmit} icon={ShoppingCart}>
-                <span className="hidden sm:inline">Registrar venta · </span>{fmt(subtotal)}
+                <span className="hidden sm:inline">Registrar venta · </span>{fmt(total)}
               </Button>
             </div>
           </div>
@@ -610,6 +652,50 @@ function NewSaleModal({ onSaved, onClose }) {
             )}
           </div>
 
+          {/* Canje de puntos — visible solo si hay cliente con puntos y lealtad activa */}
+          {customer && loyaltyConfig?.is_enabled && customer.points >= (loyaltyConfig.min_points_redeem ?? 1) && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-[12px] font-semibold text-amber-800 flex items-center gap-1.5">
+                  <Star size={12} /> Canjear puntos
+                </label>
+                <span className="text-[11px] text-amber-600">
+                  {customer.points} disponibles · 1 pt = {fmt(loyaltyConfig.value_per_point)}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  max={Math.min(customer.points, Math.floor(subtotal / loyaltyConfig.value_per_point))}
+                  value={pointsToUse || ''}
+                  onChange={e => {
+                    const max = Math.min(customer.points, Math.floor(subtotal / loyaltyConfig.value_per_point))
+                    setPointsToUse(Math.max(0, Math.min(Number(e.target.value) || 0, max)))
+                  }}
+                  placeholder="0 pts"
+                  className="input-base w-28 text-[13px]"
+                />
+                {pointsDiscount > 0 ? (
+                  <span className="text-[12px] font-semibold text-green-600">= -{fmt(pointsDiscount)}</span>
+                ) : (
+                  <span className="text-[12px] text-amber-600">ingresa puntos a canjear</span>
+                )}
+                {pointsToUse > 0 && (
+                  <button onClick={() => setPointsToUse(0)} className="ml-auto text-luma-faint hover:text-red-500">
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
+              {pointsDiscount > 0 && (
+                <p className="text-[11px] text-amber-700">
+                  Total a cobrar: <span className="font-bold">{fmt(total)}</span>
+                  <span className="ml-1 text-amber-500">(antes {fmt(subtotal)})</span>
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Método de pago */}
           <div>
             <label className="text-[12px] font-semibold text-luma-text mb-1.5 block">Método de pago</label>
@@ -636,7 +722,7 @@ function NewSaleModal({ onSaved, onClose }) {
               <input
                 type="number"
                 className="input-base"
-                placeholder={String(subtotal)}
+                placeholder={String(total)}
                 value={received}
                 onChange={e => setReceived(e.target.value)}
               />
@@ -795,113 +881,192 @@ export default function Ventas() {
   useEffect(() => { load(1)    }, [load])
   useEffect(() => { loadStats() }, [loadStats])
 
-  if (loading) return <PageLoader />
-
   return (
     <div className="space-y-5 animate-fade-up">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <h2 className="page-title">Ventas</h2>
-          <p className="text-[13px] text-luma-muted mt-0.5">{totalCount.toLocaleString('es-CO')} registros</p>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-teal-50 rounded-2xl flex items-center justify-center flex-shrink-0">
+            <ShoppingBag size={20} className="text-teal-600" />
+          </div>
+          <div>
+            <h1 className="page-title">Ventas</h1>
+            <p className="text-[13px] text-luma-muted mt-0.5">{totalCount.toLocaleString('es-CO')} registros</p>
+          </div>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" icon={RotateCcw} onClick={() => setReturnModal(true)}>
-            <span className="hidden sm:inline">Devolución</span>
+            Devolución
           </Button>
           <Button variant="teal" icon={Plus} onClick={() => setNewModal(true)}>
             <span className="hidden sm:inline">Nueva venta</span>
             <span className="sm:hidden">Nueva</span>
           </Button>
-          <button onClick={() => { load(1); loadStats() }} className="btn-ghost" title="Actualizar">
-            <RefreshCw size={15} />
-          </button>
         </div>
       </div>
 
       {/* KPI Strip — valores reales del servidor (incluyen todos los registros, no solo la página) */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="card p-4">
-          <p className="section-label">Total ingresos</p>
-          <p className="text-xl font-bold text-teal-600 mt-1">{fmt(stats.total_revenue)}</p>
-        </div>
-        <div className="card p-4">
-          <p className="section-label">N de transacciones</p>
-          <p className="text-xl font-bold text-luma-text mt-1">{stats.count.toLocaleString('es-CO')}</p>
-        </div>
-        <div className="card p-4">
-          <p className="section-label">Ticket promedio</p>
-          <p className="text-xl font-bold text-luma-text mt-1">{fmt(stats.avg_ticket)}</p>
-        </div>
+        {[
+          { label: 'Total ingresos',  value: fmt(stats.total_revenue),           color: 'text-teal-600',  icon: TrendingUp,  iconBg: 'bg-teal-50',   iconCls: 'text-teal-500' },
+          { label: 'Transacciones',   value: stats.count.toLocaleString('es-CO'), color: 'text-luma-text', icon: ShoppingBag, iconBg: 'bg-blue-50',   iconCls: 'text-blue-500' },
+          { label: 'Ticket promedio', value: fmt(stats.avg_ticket),               color: 'text-luma-text', icon: DollarSign,  iconBg: 'bg-cream-200',  iconCls: 'text-luma-muted' },
+        ].map(k => {
+          const Icon = k.icon
+          return (
+            <div key={k.label} className="card p-4">
+              <div className="flex items-start justify-between mb-2">
+                <p className="section-label">{k.label}</p>
+                <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${k.iconBg}`}>
+                  <Icon size={15} className={k.iconCls} />
+                </div>
+              </div>
+              <p className={`text-xl font-bold ${k.color}`}>{k.value}</p>
+            </div>
+          )
+        })}
       </div>
 
       {/* Filtros */}
-      <div className="card p-4 flex flex-col sm:flex-row gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-[180px]">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-luma-faint pointer-events-none z-10" />
-          <input
-            value={inputSearch}
-            onChange={e => setInputSearch(e.target.value)}
-            placeholder="Buscar por número o cliente..."
-            className="input-base !pl-9"
-          />
+      <div className="card p-4 space-y-3">
+        {/* Fila 1: búsqueda + refresh */}
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-luma-faint pointer-events-none z-10" />
+            <input
+              value={inputSearch}
+              onChange={e => setInputSearch(e.target.value)}
+              placeholder="Buscar por número o cliente..."
+              className="input-base !pl-9"
+            />
+          </div>
+          <button
+            onClick={() => { load(1); loadStats() }}
+            className="btn-ghost flex-shrink-0 px-3"
+            title="Actualizar"
+          >
+            <RefreshCw size={15} />
+          </button>
         </div>
-        <select value={filter} onChange={e => setFilter(e.target.value)} className="input-base w-full sm:w-40">
-          <option value="">Todos los métodos</option>
-          {methods.map(({ key, label }) => (
-            <option key={key} value={key}>{label}</option>
-          ))}
-        </select>
-        {sellers.length > 0 && (
-          <select value={soldBy} onChange={e => setSoldBy(e.target.value)} className="input-base w-full sm:w-40">
-            <option value="">Todos los vendedores</option>
-            {sellers.map(u => (
-              <option key={u.id} value={u.id}>
-                {u.first_name && u.last_name ? `${u.first_name} ${u.last_name}` : u.username}
-              </option>
+        {/* Fila 2: selects — grid 2-col en móvil, flex en sm+ */}
+        <div className="grid grid-cols-2 sm:flex sm:flex-row gap-2">
+          <select
+            value={filter}
+            onChange={e => setFilter(e.target.value)}
+            className="input-base sm:w-44"
+          >
+            <option value="">Método de pago</option>
+            {methods.map(({ key, label }) => (
+              <option key={key} value={key}>{label}</option>
             ))}
           </select>
-        )}
-        <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="input-base w-full sm:w-36" title="Desde" />
-        <input type="date" value={dateTo}   onChange={e => setDateTo(e.target.value)}   className="input-base w-full sm:w-36" title="Hasta" />
+          {sellers.length > 0 && (
+            <select
+              value={soldBy}
+              onChange={e => setSoldBy(e.target.value)}
+              className="input-base sm:w-44"
+            >
+              <option value="">Todos los vendedores</option>
+              {sellers.map(u => (
+                <option key={u.id} value={u.id}>
+                  {u.first_name && u.last_name ? `${u.first_name} ${u.last_name}` : u.username}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+        {/* Fila 3: fechas — grid 2-col fijo para evitar overflow en móvil */}
+        <div className="grid grid-cols-2 sm:flex sm:flex-row gap-2">
+          <div className="flex items-center gap-1 min-w-0">
+            <span className="text-[11px] text-luma-faint whitespace-nowrap flex-shrink-0">Desde</span>
+            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="input-base flex-1 min-w-0 text-[12px]" />
+          </div>
+          <div className="flex items-center gap-1 min-w-0">
+            <span className="text-[11px] text-luma-faint whitespace-nowrap flex-shrink-0">Hasta</span>
+            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="input-base flex-1 min-w-0 text-[12px]" />
+          </div>
+        </div>
       </div>
 
       {/* Tabla */}
       <div className="card overflow-hidden">
-        {sales.length === 0 && !loading ? (
-          <EmptyState
-            icon={ShoppingCart}
-            title="Sin ventas"
-            description='Registra la primera venta con el boton "Nueva venta"'
-            action={<Button variant="teal" icon={Plus} size="sm" onClick={() => setNewModal(true)}>Nueva venta</Button>}
-          />
-        ) : (
-          <>
-            <div className="overflow-x-auto">
-              <table className="luma-table">
-                <thead>
-                  <tr>
-                    <th>Numero</th>
-                    <th className="hidden sm:table-cell">Cliente</th>
-                    <th className="hidden md:table-cell">Metodo pago</th>
-                    <th>Total</th>
-                    <th className="hidden lg:table-cell">Vendedor</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sales.map(s => <SaleRow key={s.id} sale={s} onView={setViewSale} labelsMap={labelsMap} />)}
-                </tbody>
-              </table>
+
+        {/* ── Vista móvil (sm:hidden) ── */}
+        <div className="sm:hidden">
+          {loading ? (
+            <div className="divide-y divide-luma-border">
+              {Array.from({ length: 7 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-3 px-4 py-3 animate-pulse">
+                  <div className="flex-1 space-y-1.5">
+                    <div className="h-3 bg-cream-200 rounded w-1/3" />
+                    <div className="h-2.5 bg-cream-200 rounded w-1/2" />
+                    <div className="h-2 bg-cream-200 rounded w-1/4" />
+                  </div>
+                  <div className="h-4 bg-cream-200 rounded w-16 flex-shrink-0" />
+                </div>
+              ))}
             </div>
-            <div className="px-5 py-3 border-t border-luma-border">
-              <Pagination
-                page={page}
-                totalCount={totalCount}
-                pageSize={PAGE_SIZE_VENTAS}
-                onPageChange={load}
+          ) : sales.length === 0 ? (
+            <div className="py-16">
+              <EmptyState
+                icon={ShoppingCart}
+                title="Sin ventas"
+                description='Registra la primera venta con el botón "Nueva venta"'
+                action={<Button variant="teal" icon={Plus} size="sm" onClick={() => setNewModal(true)}>Nueva venta</Button>}
               />
             </div>
-          </>
+          ) : (
+            <div className="divide-y divide-luma-border">
+              {sales.map(s => (
+                <SaleMobileCard key={s.id} sale={s} onView={setViewSale} labelsMap={labelsMap} />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ── Vista desktop (hidden en móvil) ── */}
+        <div className="hidden sm:block overflow-x-auto">
+          <table className="luma-table">
+            <thead>
+              <tr>
+                <th>Número</th>
+                <th className="hidden sm:table-cell">Cliente</th>
+                <th className="hidden md:table-cell">Método de pago</th>
+                <th>Total</th>
+                <th className="hidden lg:table-cell">Vendedor</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} cols={5} />)
+              ) : sales.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-16 text-center">
+                    <EmptyState
+                      icon={ShoppingCart}
+                      title="Sin ventas"
+                      description='Registra la primera venta con el botón "Nueva venta"'
+                      action={<Button variant="teal" icon={Plus} size="sm" onClick={() => setNewModal(true)}>Nueva venta</Button>}
+                    />
+                  </td>
+                </tr>
+              ) : (
+                sales.map(s => <SaleRow key={s.id} sale={s} onView={setViewSale} labelsMap={labelsMap} />)
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Paginación */}
+        {!loading && totalCount > 0 && (
+          <div className="px-5 py-3 border-t border-luma-border">
+            <Pagination
+              page={page}
+              totalCount={totalCount}
+              pageSize={PAGE_SIZE_VENTAS}
+              onPageChange={load}
+            />
+          </div>
         )}
       </div>
 

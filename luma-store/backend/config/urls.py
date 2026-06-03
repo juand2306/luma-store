@@ -32,4 +32,7 @@ urlpatterns = [
     path("api/v1/store/config/",     PublicStoreConfigView.as_view(), name="store-config-public"),
     path("api/v1/store/",            include(store_router.urls)),
 
+    # ── Pasarela de pagos (webhook público — proveedor llama directamente) ─
+    path("api/v1/payments/",         include("apps.payments.urls")),
+
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

@@ -19,19 +19,28 @@ export function Badge({ variant = 'gray', dot = false, children }) {
   )
 }
 
-// ─── Status badge based on product/variant status ─────────────────────────────
+// ─── Status badge based on entity status ──────────────────────────────────────
 export function StatusBadge({ status }) {
   const map = {
-    active:   { label: 'Activo',   variant: 'green' },
-    inactive: { label: 'Inactivo', variant: 'gray' },
-    out:      { label: 'Agotado',  variant: 'red' },
-    in_stock: { label: 'En stock', variant: 'teal' },
-    low:      { label: 'Bajo',     variant: 'amber' },
-    open:     { label: 'Abierta',  variant: 'teal' },
-    closed:   { label: 'Cerrada',  variant: 'gray' },
-    new:      { label: 'Nuevo',    variant: 'teal' },
-    confirmed:{ label: 'Confirmado',variant:'green'},
-    cancelled:{ label: 'Cancelado',variant: 'red' },
+    // Productos / Variantes
+    active:      { label: 'Activo',      variant: 'green' },
+    inactive:    { label: 'Inactivo',    variant: 'gray'  },
+    out:         { label: 'Agotado',     variant: 'red'   },
+    in_stock:    { label: 'En stock',    variant: 'teal'  },
+    low:         { label: 'Bajo',        variant: 'amber' },
+    // Pedidos / Órdenes
+    new:         { label: 'Nuevo',       variant: 'teal'  },
+    pending:     { label: 'Pendiente',   variant: 'amber' },
+    confirmed:   { label: 'Confirmado',  variant: 'green' },
+    preparing:   { label: 'Preparando',  variant: 'amber' },
+    processing:  { label: 'En proceso',  variant: 'teal'  },
+    ready:       { label: 'Listo',       variant: 'green' },
+    shipped:     { label: 'Enviado',     variant: 'teal'  },
+    delivered:   { label: 'Entregado',   variant: 'green' },
+    cancelled:   { label: 'Cancelado',   variant: 'red'   },
+    // Caja
+    open:        { label: 'Abierta',     variant: 'teal'  },
+    closed:      { label: 'Cerrada',     variant: 'gray'  },
   }
   const cfg = map[status] || { label: status, variant: 'gray' }
   return <Badge variant={cfg.variant} dot>{cfg.label}</Badge>

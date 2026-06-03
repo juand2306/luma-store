@@ -19,15 +19,21 @@ from apps.inventory.models import Product, ProductVariant, StockMovement
 def generate_order_number():
     """
     Genera el número correlativo de pedido (PED-00001, PED-00002...).
+    Usa el campo 'number' (no el id) para evitar colisiones si se eliminan registros.
     Debe llamarse DENTRO de un bloque transaction.atomic().
     """
     from django.db import connection
     qs = Order.objects.order_by("-id")
     if "sqlite" not in connection.vendor:
         qs = qs.select_for_update()
-    last = qs.values_list("id", flat=True).first()
-    num = (last + 1) if last else 1
-    return f"PED-{num:05d}"
+    last_number = qs.values_list("number", flat=True).first()
+    if not last_number:
+        return "PED-00001"
+    try:
+        next_num = int(last_number.rsplit("-", 1)[-1]) + 1
+    except (ValueError, IndexError):
+        next_num = Order.objects.count() + 1
+    return f"PED-{next_num:05d}"
 
 
 def fulfill_order(order, payment_method, user):
@@ -45,6 +51,7 @@ def fulfill_order(order, payment_method, user):
     sale = Sale.objects.create(
         number=generate_sale_number(),   # misma función y lock que las ventas directas
         order=order,
+        customer=order.customer,         # propaga el FK deduplicado al historial de ventas
         subtotal=order.subtotal,
         total=order.total,
         payment_method=payment_method or "other",
@@ -65,8 +72,10 @@ def fulfill_order(order, payment_method, user):
             unit_price=item.unit_price,
             subtotal=item.subtotal,
         )
-        item.variant.stock = max(0, item.variant.stock - item.quantity)
-        item.variant.save(update_fields=["stock"])
+        # Descuento de stock atómico — evita race condition bajo concurrencia
+        ProductVariant.objects.filter(pk=item.variant.pk).update(
+            stock=F("stock") - item.quantity
+        )
         StockMovement.objects.create(
             variant=item.variant,
             type=StockMovement.MovementType.SALE,
@@ -104,13 +113,23 @@ def fulfill_order(order, payment_method, user):
 
 
 def generate_purchase_number():
+    """
+    Genera el número correlativo de OC (OC-00001, OC-00002...).
+    Usa el campo 'number' (no el id) para evitar colisiones si se eliminan OC canceladas.
+    Debe llamarse DENTRO de un bloque transaction.atomic().
+    """
     from django.db import connection
     qs = PurchaseOrder.objects.order_by("-id")
     if "sqlite" not in connection.vendor:
         qs = qs.select_for_update()
-    last = qs.values_list("id", flat=True).first()
-    num  = (last + 1) if last else 1
-    return f"OC-{num:05d}"
+    last_number = qs.values_list("number", flat=True).first()
+    if not last_number:
+        return "OC-00001"
+    try:
+        next_num = int(last_number.rsplit("-", 1)[-1]) + 1
+    except (ValueError, IndexError):
+        next_num = PurchaseOrder.objects.count() + 1
+    return f"OC-{next_num:05d}"
 
 
 class PurchaseOrderViewSet(viewsets.ModelViewSet):
@@ -126,8 +145,10 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
         if status_f:
             qs = qs.filter(status=status_f)
         if search:
-            qs = qs.filter(product_name__icontains=search)
-        return qs
+            qs = qs.filter(
+                Q(product_name__icontains=search) | Q(number__icontains=search)
+            )
+        return qs.order_by("-created_at")
 
     def get_serializer_class(self):
         if self.action in ["update", "partial_update"]:
@@ -247,6 +268,7 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
                 stock=F("stock") + qty
             )
             variant = purchase.variant  # instancia en memoria para FK en StockMovement
+            variant.refresh_from_db(fields=["stock"])  # Evita stock stale en la respuesta
 
             StockMovement.objects.create(
                 variant      = variant,
@@ -391,6 +413,11 @@ class OrderViewSet(viewsets.ModelViewSet):
             if new_status == Order.Status.DELIVERED:
                 payment_method = request.data.get("payment_method", "other")
                 fulfill_order(order, payment_method, request.user)
+
+            # Notificar al cliente sobre el nuevo estado (solo estados relevantes)
+            from apps.notifications.emails import send_order_status_update
+            _status = new_status
+            transaction.on_commit(lambda: send_order_status_update(order, _status))
         else:
             serializer.save()
 
@@ -414,9 +441,20 @@ class StoreOrderCreateView(generics.CreateAPIView):
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
+        from apps.customers.models import Customer
+
         serializer = StoreOrderCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+
+        # Deduplicar cliente por teléfono: reutiliza registro existente o crea uno nuevo.
+        # Si el cliente proporciona email, se almacena en su registro para notificaciones.
+        # Retorna None si el comprador no proporcionó teléfono (pedido anónimo).
+        customer = Customer.get_or_create_by_phone(
+            phone=data.get("customer_phone", ""),
+            name=data.get("customer_name", ""),
+            email=data.get("customer_email", ""),
+        )
 
         # Bulk-fetch variantes en una sola query (la validación ya las tiene, pero
         # validated_data solo guarda los dicts de entrada, no los objetos)
@@ -445,6 +483,7 @@ class StoreOrderCreateView(generics.CreateAPIView):
 
         order = Order.objects.create(
             number=generate_order_number(),
+            customer=customer,
             customer_name=data.get("customer_name", ""),
             customer_phone=data.get("customer_phone", ""),
             note=data.get("note", ""),
@@ -467,5 +506,11 @@ class StoreOrderCreateView(generics.CreateAPIView):
             status=Order.Status.NEW,
             note="Pedido recibido desde el portal online.",
         )
+
+        # Enviar confirmación por email al cliente (si tiene email registrado).
+        # transaction.on_commit garantiza que el email solo se envía si la
+        # transacción confirma exitosamente — nunca para pedidos revertidos.
+        from apps.notifications.emails import send_order_confirmation
+        transaction.on_commit(lambda: send_order_confirmation(order))
 
         return Response(OrderSerializer(order).data, status=status.HTTP_201_CREATED)

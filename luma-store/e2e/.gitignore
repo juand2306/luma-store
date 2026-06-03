@@ -1,0 +1,6 @@
+node_modules/
+playwright-report/
+test-results/
+
+# Auth state generado por global.setup.js (contiene tokens JWT)
+fixtures/admin-auth.json

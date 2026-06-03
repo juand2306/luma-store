@@ -3,12 +3,13 @@ import toast from 'react-hot-toast'
 import {
   Store, RefreshCw, Clock, ChevronRight,
   MessageCircle, ShoppingBag, CheckCircle2, Package, Search,
-  Bell, X, SlidersHorizontal
+  Bell, X, SlidersHorizontal, Banknote, ArrowLeftRight, Smartphone,
+  CircleDollarSign, CreditCard, Truck
 } from 'lucide-react'
 import { buildWhatsAppUrl, buildOrderMessage } from '../utils/whatsapp'
 import { Button } from '../components/ui/Button'
 import Modal from '../components/ui/Modal'
-import { PageLoader, EmptyState, Pagination } from '../components/ui/Misc'
+import { PageLoader, Pagination } from '../components/ui/Misc'
 import { StatusBadge } from '../components/ui/Badge'
 import * as svc from '../api/services'
 import { usePaymentMethods } from '../hooks/usePaymentMethods'
@@ -16,18 +17,22 @@ import { usePaymentMethods } from '../hooks/usePaymentMethods'
 const fmt = (n) => `$${Number(n || 0).toLocaleString('es-CO')}`
 
 const STATUS_OPTIONS = [
-  { value: 'in_progress', label: '👀 En gestión' },
-  { value: 'confirmed',   label: '✓ Confirmado' },
-  { value: 'preparing',   label: '📦 En preparación' },
-  { value: 'shipped',     label: '✅ Listo para entregar' },
-  { value: 'delivered',   label: '🚚 Marcar como entregado' },
-  { value: 'cancelled',   label: '✕ Cancelar pedido' },
+  { value: 'in_progress', label: 'En gestión' },
+  { value: 'confirmed',   label: 'Confirmado' },
+  { value: 'preparing',   label: 'En preparación' },
+  { value: 'shipped',     label: 'Listo para entregar' },
+  { value: 'delivered',   label: 'Marcar como entregado' },
+  { value: 'cancelled',   label: 'Cancelar pedido' },
 ]
 
-// Iconos de respaldo por clave de método
 const METHOD_ICONS = {
-  cash: '💵', transfer: '🏦', nequi: '🟣', daviplata: '🔴',
-  debit: '💳', credit: '💳', other: '🔄',
+  cash:      Banknote,
+  transfer:  ArrowLeftRight,
+  nequi:     Smartphone,
+  daviplata: Smartphone,
+  debit:     CreditCard,
+  credit:    CreditCard,
+  other:     CircleDollarSign,
 }
 
 const POLL_INTERVAL    = 60000
@@ -88,19 +93,23 @@ function DeliveryConfirmModal({ order, onConfirm, onCancel, loading }) {
             ¿Cómo pagó el cliente? <span className="text-red-500">*</span>
           </label>
           <div className="grid grid-cols-2 gap-2">
-            {enabledMethods.map(({ key, label }) => (
-              <button
-                key={key}
-                onClick={() => setPaymentMethod(key)}
-                className={`px-3 py-2.5 rounded-xl border text-[12px] font-medium text-left transition-all ${
-                  paymentMethod === key
-                    ? 'border-teal-400 bg-teal-50 text-teal-700 shadow-sm'
-                    : 'border-luma-border hover:border-teal-300 hover:bg-cream-50 text-luma-muted'
-                }`}
-              >
-                {METHOD_ICONS[key] || '💰'} {label}
-              </button>
-            ))}
+            {enabledMethods.map(({ key, label }) => {
+              const Icon = METHOD_ICONS[key] || CircleDollarSign
+              return (
+                <button
+                  key={key}
+                  onClick={() => setPaymentMethod(key)}
+                  className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-[12px] font-medium transition-all ${
+                    paymentMethod === key
+                      ? 'border-teal-400 bg-teal-50 text-teal-700 shadow-sm'
+                      : 'border-luma-border hover:border-teal-300 hover:bg-cream-50 text-luma-muted'
+                  }`}
+                >
+                  <Icon size={13} className="flex-shrink-0" />
+                  {label}
+                </button>
+              )
+            })}
           </div>
         </div>
       </div>
@@ -187,6 +196,7 @@ const STATUS_TEMPLATE_KEY = {
 export default function Pedidos() {
   const [orders,         setOrders]         = useState([])
   const [loading,        setLoading]        = useState(true)
+  const [hasLoaded,      setHasLoaded]      = useState(false)
   const [page,           setPage]           = useState(1)
   const [totalCount,     setTotalCount]     = useState(0)
   const [stats,          setStats]          = useState({ total: 0, new: 0, in_progress: 0, done: 0 })
@@ -227,7 +237,7 @@ export default function Pedidos() {
       const newCount = list.filter(o => o.status === 'new').length
       if (silent) {
         if (newCount > prevCountRef.current) {
-          toast(`🔔 ${newCount - prevCountRef.current} nuevo(s) pedido(s)`, { icon: '📦' })
+          toast.success(`${newCount - prevCountRef.current} nuevo(s) pedido(s)`)
         }
         prevCountRef.current = newCount
         return
@@ -237,7 +247,7 @@ export default function Pedidos() {
       setTotalCount(data?.count ?? 0)
       prevCountRef.current = newCount
     } catch { if (!silent) toast.error('Error cargando pedidos') }
-    finally { if (!silent) setLoading(false) }
+    finally { if (!silent) { setLoading(false); setHasLoaded(true) } }
   }, [filterParams])
 
   // loadStats — conteos reales del servidor (no limitados a la página actual)
@@ -292,7 +302,7 @@ export default function Pedidos() {
       if (paymentMethod) payload.payment_method = paymentMethod
       const { data } = await svc.updateOrder(detail.id, payload)
       if (status === 'delivered' && data.sale_number) {
-        toast.success(`✅ Entregado · Venta ${data.sale_number} registrada`)
+        toast.success(`Entregado · Venta ${data.sale_number} registrada`)
       } else {
         toast.success('Estado actualizado')
       }
@@ -308,7 +318,7 @@ export default function Pedidos() {
   const inProgress = orders.filter(o => ['in_progress','confirmed','preparing','shipped'].includes(o.status))
   const done       = orders.filter(o => ['delivered','cancelled'].includes(o.status))
 
-  if (loading) return <PageLoader />
+  if (loading && !hasLoaded) return <PageLoader />
 
   const hasActiveFilters = filter || inputSearch
 
@@ -317,60 +327,66 @@ export default function Pedidos() {
 
       {/* ── Header ── */}
       <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="page-title">Pedidos</h2>
-          <p className="text-[13px] text-luma-muted mt-0.5">
-            {totalCount.toLocaleString('es-CO')} pedidos en total
-            {stats.new > 0 && (
-              <span className="ml-2 inline-flex items-center gap-1 text-amber-600 font-semibold">
-                <Bell size={11} />
-                {stats.new} nuevos
-              </span>
-            )}
-          </p>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-teal-50 rounded-2xl flex items-center justify-center flex-shrink-0">
+            <Store size={20} className="text-teal-600" />
+          </div>
+          <div>
+            <h1 className="page-title">Pedidos</h1>
+            <p className="text-[13px] text-luma-muted mt-0.5">
+              {totalCount.toLocaleString('es-CO')} pedidos en total
+              {stats.new > 0 && (
+                <span className="ml-2 inline-flex items-center gap-1 text-amber-600 font-semibold">
+                  <Bell size={11} />
+                  {stats.new} nuevos
+                </span>
+              )}
+            </p>
+          </div>
         </div>
         <button
           onClick={() => { load(1); loadStats() }}
-          className="btn-ghost p-2 mt-1 flex-shrink-0"
+          className={`btn-ghost p-2 mt-1 flex-shrink-0 ${loading ? 'animate-spin text-teal-500' : ''}`}
           title="Actualizar"
+          disabled={loading}
         >
           <RefreshCw size={15} />
         </button>
       </div>
 
       {/* ── KPIs ── */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-3 gap-2 sm:gap-3">
         {/* Nuevos */}
-        <div className="card p-4 flex items-center gap-3 group hover:shadow-card-md transition-all duration-200">
-          <div className="w-10 h-10 bg-teal-50 rounded-xl flex items-center justify-center flex-shrink-0">
-            <Bell size={17} className="text-teal-500" />
+        <div className="card p-3 sm:p-4 flex items-center gap-2 sm:gap-3 group hover:shadow-card-md transition-all duration-200">
+          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-teal-50 rounded-xl flex items-center justify-center flex-shrink-0">
+            <Bell size={15} className="text-teal-500" />
           </div>
           <div className="min-w-0">
-            <p className="section-label">Nuevos</p>
-            <p className="text-[22px] font-bold text-teal-600 leading-tight mt-0.5">{stats.new}</p>
+            <p className="section-label truncate">Nuevos</p>
+            <p className="text-[18px] sm:text-[22px] font-bold text-teal-600 leading-tight mt-0.5">{stats.new}</p>
           </div>
           {stats.new > 0 && (
             <span className="ml-auto w-2 h-2 bg-amber-400 rounded-full animate-pulse flex-shrink-0" />
           )}
         </div>
         {/* En proceso */}
-        <div className="card p-4 flex items-center gap-3 hover:shadow-card-md transition-all duration-200">
-          <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center flex-shrink-0">
-            <Clock size={17} className="text-amber-500" />
+        <div className="card p-3 sm:p-4 flex items-center gap-2 sm:gap-3 hover:shadow-card-md transition-all duration-200">
+          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-amber-50 rounded-xl flex items-center justify-center flex-shrink-0">
+            <Clock size={15} className="text-amber-500" />
           </div>
-          <div>
-            <p className="section-label">En proceso</p>
-            <p className="text-[22px] font-bold text-amber-600 leading-tight mt-0.5">{stats.in_progress}</p>
+          <div className="min-w-0">
+            <p className="section-label truncate">En proceso</p>
+            <p className="text-[18px] sm:text-[22px] font-bold text-amber-600 leading-tight mt-0.5">{stats.in_progress}</p>
           </div>
         </div>
         {/* Completados */}
-        <div className="card p-4 flex items-center gap-3 hover:shadow-card-md transition-all duration-200">
-          <div className="w-10 h-10 bg-cream-200 rounded-xl flex items-center justify-center flex-shrink-0">
-            <CheckCircle2 size={17} className="text-luma-muted" />
+        <div className="card p-3 sm:p-4 flex items-center gap-2 sm:gap-3 hover:shadow-card-md transition-all duration-200">
+          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-cream-200 rounded-xl flex items-center justify-center flex-shrink-0">
+            <CheckCircle2 size={15} className="text-luma-muted" />
           </div>
-          <div>
-            <p className="section-label">Completados</p>
-            <p className="text-[22px] font-bold text-luma-muted leading-tight mt-0.5">{stats.done}</p>
+          <div className="min-w-0">
+            <p className="section-label truncate">Completados</p>
+            <p className="text-[18px] sm:text-[22px] font-bold text-luma-muted leading-tight mt-0.5">{stats.done}</p>
           </div>
         </div>
       </div>
@@ -386,7 +402,7 @@ export default function Pedidos() {
               placeholder="Buscar por número o cliente..."
               value={inputSearch}
               onChange={e => setInputSearch(e.target.value)}
-              className="input-base w-full pl-9"
+              className="input-base w-full !pl-9"
             />
           </div>
           {/* Status filter */}
@@ -395,16 +411,16 @@ export default function Pedidos() {
             <select
               value={filter}
               onChange={e => setFilter(e.target.value)}
-              className="input-base pl-8 w-full sm:w-52 appearance-none"
+              className="input-base !pl-9 w-full sm:w-52 appearance-none"
             >
               <option value="">Todos los estados</option>
-              <option value="new">🔔 Nuevos</option>
-              <option value="in_progress">👀 En gestión</option>
-              <option value="confirmed">✓ Confirmados</option>
-              <option value="preparing">📦 En preparación</option>
-              <option value="shipped">✅ Listos para entregar</option>
-              <option value="delivered">🚚 Entregados</option>
-              <option value="cancelled">✕ Cancelados</option>
+              <option value="new">Nuevos</option>
+              <option value="in_progress">En gestión</option>
+              <option value="confirmed">Confirmados</option>
+              <option value="preparing">En preparación</option>
+              <option value="shipped">Listos para entregar</option>
+              <option value="delivered">Entregados</option>
+              <option value="cancelled">Cancelados</option>
             </select>
           </div>
         </div>
@@ -418,13 +434,13 @@ export default function Pedidos() {
                 onClick={() => setFilter('')}
                 className="inline-flex items-center gap-1 text-[11px] bg-teal-50 text-teal-700 border border-teal-200 px-2 py-0.5 rounded-lg hover:bg-teal-100 transition-colors"
               >
-                {filter === 'new' ? '🔔 Nuevos'
-                  : filter === 'in_progress' ? '👀 En gestión'
-                  : filter === 'confirmed' ? '✓ Confirmados'
-                  : filter === 'preparing' ? '📦 Preparando'
-                  : filter === 'shipped' ? '✅ Listos'
-                  : filter === 'delivered' ? '🚚 Entregados'
-                  : '✕ Cancelados'}
+                {filter === 'new' ? 'Nuevos'
+                  : filter === 'in_progress' ? 'En gestión'
+                  : filter === 'confirmed' ? 'Confirmados'
+                  : filter === 'preparing' ? 'Preparando'
+                  : filter === 'shipped' ? 'Listos'
+                  : filter === 'delivered' ? 'Entregados'
+                  : 'Cancelados'}
                 <X size={10} />
               </button>
             )}
@@ -446,6 +462,7 @@ export default function Pedidos() {
         )}
       </div>
 
+      <div className={loading ? 'opacity-50 pointer-events-none transition-opacity' : 'transition-opacity'}>
       {orders.length === 0 ? (
         <div className="card py-14 text-center">
           <div className="w-14 h-14 bg-cream-200 rounded-2xl flex items-center justify-center mx-auto mb-4">
@@ -481,7 +498,7 @@ export default function Pedidos() {
               {[...newOrders, ...inProgress].length === 0 ? (
                 <div className="card p-8 text-center">
                   <CheckCircle2 size={22} className="text-teal-400 mx-auto mb-2" />
-                  <p className="text-[12px] text-luma-faint">Sin pedidos pendientes ✓</p>
+                  <p className="text-[12px] text-luma-faint">Sin pedidos pendientes</p>
                 </div>
               ) : (
                 [...newOrders, ...inProgress].map(o => (
@@ -514,6 +531,8 @@ export default function Pedidos() {
           </div>
         </div>
       )}
+
+      </div>
 
       <Pagination
         page={page}
@@ -559,10 +578,11 @@ export default function Pedidos() {
                   </select>
                   <Button
                     variant={newStatus === 'delivered' ? 'teal' : 'outline'}
+                    icon={newStatus === 'delivered' ? Truck : undefined}
                     loading={saving}
                     onClick={handleUpdateClick}
                   >
-                    {newStatus === 'delivered' ? '🚚 Entregar' : 'Actualizar'}
+                    {newStatus === 'delivered' ? 'Entregar' : 'Actualizar'}
                   </Button>
                 </div>
               )}

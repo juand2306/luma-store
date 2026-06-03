@@ -44,9 +44,9 @@ export default function OrderConfirmation() {
             {order.items.map((item) => (
               <div key={item.id} className="flex justify-between items-center text-sm">
                 <div>
-                  <p className="font-medium text-gray-800">{item.product_name || item.variant?.product?.name}</p>
+                  <p className="font-medium text-gray-800">{item.product_name}</p>
                   <p className="text-gray-500 text-xs">
-                    {[item.variant?.size && `Talla ${item.variant.size}`, item.variant?.color && `Color ${item.variant.color}`]
+                    {[item.size && `Talla ${item.size}`, item.color && `Color ${item.color}`]
                       .filter(Boolean)
                       .join(" · ")}
                     {" "}× {item.quantity}

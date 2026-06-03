@@ -1,9 +1,12 @@
+import re
+
 from django.db import models
 
 
 class Customer(models.Model):
     name       = models.CharField(max_length=150)
-    phone      = models.CharField(max_length=20, blank=True)
+    # db_index permite búsquedas y deduplicación eficiente por teléfono
+    phone      = models.CharField(max_length=20, blank=True, db_index=True)
     email      = models.EmailField(blank=True)
     note       = models.TextField(blank=True)
     points     = models.PositiveIntegerField(default=0)
@@ -16,6 +19,52 @@ class Customer(models.Model):
 
     def __str__(self):
         return self.name
+
+    # ── Deduplicación por teléfono ────────────────────────────────────────────
+
+    @staticmethod
+    def normalize_phone(phone: str) -> str:
+        """Elimina espacios, guiones y paréntesis; conserva el prefijo +."""
+        return re.sub(r"[^\d+]", "", (phone or "").strip())
+
+    @classmethod
+    def get_or_create_by_phone(cls, phone: str, name: str, email: str = ""):
+        """
+        Devuelve (o crea) el Customer que corresponde a este teléfono.
+
+        Reglas:
+        - phone vacío → no crea registro; retorna None  (pedidos anónimos ok).
+        - Teléfono existente → reutiliza el registro; actualiza nombre si cambió.
+        - Teléfono nuevo → crea Customer con los datos recibidos.
+
+        El teléfono se normaliza antes de buscar (quita espacios/guiones/paréntesis)
+        para evitar duplicados por diferente formato ("300 123" vs "300123").
+        """
+        normalized = cls.normalize_phone(phone)
+        if not normalized:
+            return None
+
+        name  = (name  or "").strip() or "Cliente"
+        email = (email or "").strip()
+
+        customer, created = cls.objects.get_or_create(
+            phone=normalized,
+            defaults={"name": name, "email": email},
+        )
+
+        if not created:
+            fields_updated = []
+            if name and name != customer.name:
+                customer.name = name
+                fields_updated.append("name")
+            # Guardar email si el cliente no tenía uno y ahora lo proporciona
+            if email and not customer.email:
+                customer.email = email
+                fields_updated.append("email")
+            if fields_updated:
+                customer.save(update_fields=fields_updated)
+
+        return customer
 
     @property
     def segment(self):

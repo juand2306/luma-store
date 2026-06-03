@@ -11,7 +11,7 @@ const fmt = (n) => `$${Number(n || 0).toLocaleString('es-CO')}`
 const MOVEMENT_TYPES = [
   { value: 'entry',  label: 'Entrada de inventario',  icon: ArrowUp,        sign: +1, color: 'text-teal-600' },
   { value: 'adjust', label: 'Ajuste manual (+/-)',    icon: Settings,       sign: 0,  color: 'text-blue-600' },
-  { value: 'damage', label: 'Dano / Merma',           icon: AlertTriangle,  sign: -1, color: 'text-red-500' },
+  { value: 'damage', label: 'Daño / Merma',            icon: AlertTriangle,  sign: -1, color: 'text-red-500' },
 ]
 
 export default function StockMovementForm({ product, onClose }) {
@@ -21,13 +21,15 @@ export default function StockMovementForm({ product, onClose }) {
   const [quantity,  setQuantity]  = useState(1)
   const [note,      setNote]      = useState('')
   const [saving,    setSaving]    = useState(false)
+  const [loading,   setLoading]   = useState(true)
 
   useEffect(() => {
+    setLoading(true)
     svc.getVariants(product.id).then(({ data }) => {
       const list = data?.results ?? data ?? []
       setVariants(list)
       if (list.length > 0) setVariantId(String(list[0].id))
-    })
+    }).finally(() => setLoading(false))
   }, [product.id])
 
   const selectedVariant = variants.find(v => String(v.id) === String(variantId))
@@ -78,13 +80,22 @@ export default function StockMovementForm({ product, onClose }) {
       footer={
         <div className="flex gap-2 justify-end">
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
-          <Button variant="teal" loading={saving} onClick={handleSave} icon={Package}>
+          <Button variant="teal" loading={saving} onClick={handleSave} icon={Package} disabled={!variantId}>
             Registrar movimiento
           </Button>
         </div>
       }
     >
       <div className="space-y-4">
+        {/* Sin variantes — estado vacío */}
+        {!loading && variants.length === 0 && (
+          <div className="text-center py-8 text-luma-faint">
+            <Package size={32} className="mx-auto mb-2 opacity-40" />
+            <p className="text-[13px] font-medium text-luma-muted">Este producto no tiene variantes</p>
+            <p className="text-[12px] mt-1">Crea variantes primero desde la opción "Variantes" del producto.</p>
+          </div>
+        )}
+
         {/* Stock actual */}
         {selectedVariant && (
           <div className="p-3 bg-cream-100 rounded-xl flex items-center justify-between">

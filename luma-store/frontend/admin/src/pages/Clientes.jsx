@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import toast from 'react-hot-toast'
-import { Users, Plus, Search, Star, RefreshCw, ShoppingBag } from 'lucide-react'
+import { Users, Plus, Search, Star, RefreshCw, ShoppingBag, SlidersHorizontal, X, TrendingUp } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import Modal from '../components/ui/Modal'
-import { PageLoader, EmptyState, Pagination } from '../components/ui/Misc'
+import { PageLoader, EmptyState, Pagination, SkeletonRow } from '../components/ui/Misc'
 import { Badge } from '../components/ui/Badge'
 import * as svc from '../api/services'
 
@@ -42,6 +42,36 @@ function CustomerRow({ customer, onView }) {
         </div>
       </td>
     </tr>
+  )
+}
+
+function CustomerMobileCard({ customer, onView }) {
+  const seg = SEGMENT_MAP[customer.segment] || { label: customer.segment, color: 'gray' }
+  return (
+    <div
+      className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-cream-50 transition-colors border-b border-luma-border last:border-0"
+      onClick={() => onView(customer)}
+    >
+      <div className="w-9 h-9 gradient-teal rounded-xl flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+        {customer.name?.[0]?.toUpperCase() || '?'}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <p className="text-[13px] font-semibold text-luma-text truncate">{customer.name}</p>
+          <Badge variant={seg.color} dot>{seg.label}</Badge>
+        </div>
+        {customer.phone && <p className="text-[11px] text-luma-faint mt-0.5">{customer.phone}</p>}
+        <div className="flex items-center gap-2.5 mt-0.5">
+          <span className="text-[10px] text-luma-faint">{customer.purchase_count || 0} compras</span>
+          {(customer.points || 0) > 0 && (
+            <span className="flex items-center gap-0.5 text-[10px] text-amber-600">
+              <Star size={9} /> {customer.points} pts
+            </span>
+          )}
+        </div>
+      </div>
+      <p className="text-[13px] font-bold text-teal-600 flex-shrink-0">{fmt(customer.total_purchases)}</p>
+    </div>
   )
 }
 
@@ -184,6 +214,7 @@ export default function Clientes() {
 
   const [customers,    setCustomers]    = useState([])
   const [loading,      setLoading]      = useState(true)
+  const [hasLoaded,    setHasLoaded]    = useState(false)
   const [page,         setPage]         = useState(1)
   const [totalCount,   setTotalCount]   = useState(0)
   const [stats,        setStats]        = useState({ total_count: 0, total_revenue: 0, total_points: 0 })
@@ -218,7 +249,7 @@ export default function Clientes() {
       setCustomers(data?.results ?? data ?? [])
       setTotalCount(data?.count ?? 0)
     } catch { toast.error('Error cargando clientes') }
-    finally { setLoading(false) }
+    finally { setLoading(false); setHasLoaded(true) }
   }, [filterParams])
 
   // loadStats — totales globales (sin filtros) para el panel de KPIs
@@ -249,92 +280,250 @@ export default function Clientes() {
     }
   }
 
-  if (loading) return <PageLoader />
+  const hasActiveFilters = inputSearch || segment || sortBy
+  const avgTicket = stats.total_count > 0
+    ? Math.round(stats.total_revenue / stats.total_count)
+    : 0
 
   return (
-    <div className="space-y-5 animate-fade-up">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="page-title">Clientes</h2>
-          <p className="text-[13px] text-luma-muted">
-            {`${totalCount.toLocaleString('es-CO')} clientes registrados`}
-          </p>
-        </div>
-        <Button variant="teal" icon={Plus} onClick={() => setFormData({})}>
-          Nuevo cliente
-        </Button>
-      </div>
+    <div className="space-y-4 animate-fade-up">
 
-      {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {[
-          { label: 'Total clientes',   value: totalCount.toLocaleString('es-CO') },
-          { label: 'En esta página',   value: customers.length },
-          { label: 'Ingresos totales', value: `$${(stats.total_revenue / 1000).toFixed(1)}k` },
-          { label: 'Puntos activos',   value: stats.total_points.toLocaleString('es-CO') },
-        ].map(k => (
-          <div key={k.label} className="card p-4">
-            <p className="section-label">{k.label}</p>
-            <p className="text-xl font-bold text-luma-text mt-1">{k.value}</p>
+      {/* ── Header ── */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-teal-50 rounded-2xl flex items-center justify-center flex-shrink-0">
+            <Users size={20} className="text-teal-600" />
           </div>
-        ))}
+          <div>
+            <h1 className="page-title">Clientes</h1>
+            <p className="text-[13px] text-luma-muted mt-0.5">
+              {stats.total_count.toLocaleString('es-CO')} clientes registrados
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0 mt-1">
+          <button
+            onClick={() => { load(1); loadStats() }}
+            className={`btn-ghost p-2 ${loading ? 'animate-spin text-teal-500' : ''}`}
+            title="Actualizar"
+            disabled={loading}
+          >
+            <RefreshCw size={15} />
+          </button>
+          <Button variant="teal" icon={Plus} size="sm" onClick={() => setFormData({})}>
+            <span className="hidden sm:inline">Nuevo cliente</span>
+            <span className="sm:hidden">Nuevo</span>
+          </Button>
+        </div>
       </div>
 
-      {/* Filtros */}
-      <div className="card p-4 flex flex-col sm:flex-row gap-3 flex-wrap">
-        {/* Buscador */}
-        <div className="relative flex-1 min-w-[180px]">
+      {/* ── KPIs ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {/* Total */}
+        <div className="card p-4 flex items-center gap-3 hover:shadow-card-md transition-all duration-200">
+          <div className="w-10 h-10 bg-teal-50 rounded-xl flex items-center justify-center flex-shrink-0">
+            <Users size={17} className="text-teal-500" />
+          </div>
+          <div>
+            <p className="section-label">Total clientes</p>
+            <p className="text-[22px] font-bold text-teal-600 leading-tight mt-0.5">
+              {stats.total_count.toLocaleString('es-CO')}
+            </p>
+          </div>
+        </div>
+        {/* Ingresos */}
+        <div className="card p-4 flex items-center gap-3 hover:shadow-card-md transition-all duration-200">
+          <div className="w-10 h-10 bg-green-50 rounded-xl flex items-center justify-center flex-shrink-0">
+            <TrendingUp size={17} className="text-green-500" />
+          </div>
+          <div className="min-w-0">
+            <p className="section-label">Ingresos totales</p>
+            <p className="text-[15px] font-bold text-green-600 leading-tight mt-0.5 truncate">
+              {fmt(stats.total_revenue)}
+            </p>
+          </div>
+        </div>
+        {/* Ticket promedio */}
+        <div className="card p-4 flex items-center gap-3 hover:shadow-card-md transition-all duration-200">
+          <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center flex-shrink-0">
+            <ShoppingBag size={17} className="text-blue-500" />
+          </div>
+          <div className="min-w-0">
+            <p className="section-label">Ticket promedio</p>
+            <p className="text-[15px] font-bold text-blue-600 leading-tight mt-0.5 truncate">
+              {avgTicket > 0 ? fmt(avgTicket) : '—'}
+            </p>
+          </div>
+        </div>
+        {/* Puntos */}
+        <div className="card p-4 flex items-center gap-3 hover:shadow-card-md transition-all duration-200">
+          <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center flex-shrink-0">
+            <Star size={17} className="text-amber-500" />
+          </div>
+          <div>
+            <p className="section-label">Puntos activos</p>
+            <p className="text-[22px] font-bold text-amber-600 leading-tight mt-0.5">
+              {stats.total_points.toLocaleString('es-CO')}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Barra de filtros ── */}
+      <div className="card p-4 space-y-3">
+        {/* Row 1: búsqueda */}
+        <div className="relative">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-luma-faint pointer-events-none z-10" />
           <input
             value={inputSearch}
             onChange={e => setInputSearch(e.target.value)}
-            placeholder="Buscar por nombre o teléfono..."
-            className="input-base !pl-9"
+            placeholder="Buscar por nombre, teléfono o email..."
+            className="input-base w-full !pl-9"
           />
         </div>
-        {/* Segmento */}
-        <select value={segment} onChange={e => setSegment(e.target.value)} className="input-base w-full sm:w-44">
-          <option value="">Todos los segmentos</option>
-          <option value="new">🌱 Nuevo</option>
-          <option value="frequent">⭐ Frecuente</option>
-          <option value="regular">✓ Regular</option>
-          <option value="inactive">💤 Inactivo</option>
-        </select>
-        {/* Ordenar */}
-        <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="input-base w-full sm:w-44">
-          <option value="">Ordenar: recientes</option>
-          <option value="name">Nombre A→Z</option>
-          <option value="purchases">Más compras</option>
-          <option value="spent">Mayor gasto</option>
-          <option value="points">Más puntos</option>
-        </select>
-        <button onClick={() => { load(1); loadStats() }} className="btn-ghost" title="Actualizar"><RefreshCw size={15} /></button>
+        {/* Row 2: selects */}
+        <div className="grid grid-cols-2 sm:flex sm:flex-row gap-2">
+          <div className="relative">
+            <SlidersHorizontal size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-luma-faint pointer-events-none z-10" />
+            <select
+              value={segment}
+              onChange={e => setSegment(e.target.value)}
+              className="input-base !pl-9 w-full sm:w-44 appearance-none"
+            >
+              <option value="">Todos los segmentos</option>
+              <option value="new">Nuevo</option>
+              <option value="frequent">Frecuente</option>
+              <option value="regular">Regular</option>
+              <option value="inactive">Inactivo</option>
+            </select>
+          </div>
+          <div className="relative">
+            <SlidersHorizontal size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-luma-faint pointer-events-none z-10" />
+            <select
+              value={sortBy}
+              onChange={e => setSortBy(e.target.value)}
+              className="input-base !pl-9 w-full sm:w-44 appearance-none"
+            >
+              <option value="">Ordenar: recientes</option>
+              <option value="name">Nombre A→Z</option>
+              <option value="purchases">Más compras</option>
+              <option value="spent">Mayor gasto</option>
+              <option value="points">Más puntos</option>
+              <option value="recent">Última compra</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Chips de filtros activos */}
+        {hasActiveFilters && (
+          <div className="flex items-center gap-2 flex-wrap pt-1 border-t border-luma-border">
+            <span className="text-[11px] text-luma-faint">Filtros:</span>
+            {segment && (
+              <button
+                onClick={() => setSegment('')}
+                className="inline-flex items-center gap-1 text-[11px] bg-teal-50 text-teal-700 border border-teal-200 px-2 py-0.5 rounded-lg hover:bg-teal-100 transition-colors"
+              >
+                {segment === 'new' ? 'Nuevo'
+                  : segment === 'frequent' ? 'Frecuente'
+                  : segment === 'regular' ? 'Regular'
+                  : 'Inactivo'}
+                <X size={10} />
+              </button>
+            )}
+            {sortBy && (
+              <button
+                onClick={() => setSortBy('')}
+                className="inline-flex items-center gap-1 text-[11px] bg-cream-100 text-luma-muted border border-luma-border px-2 py-0.5 rounded-lg hover:bg-cream-200 transition-colors"
+              >
+                Orden: {sortBy === 'name' ? 'A→Z'
+                  : sortBy === 'purchases' ? 'Más compras'
+                  : sortBy === 'spent' ? 'Mayor gasto'
+                  : sortBy === 'points' ? 'Más puntos'
+                  : 'Última compra'}
+                <X size={10} />
+              </button>
+            )}
+            {inputSearch && (
+              <button
+                onClick={() => setInputSearch('')}
+                className="inline-flex items-center gap-1 text-[11px] bg-cream-100 text-luma-muted border border-luma-border px-2 py-0.5 rounded-lg hover:bg-cream-200 transition-colors"
+              >
+                "{inputSearch}" <X size={10} />
+              </button>
+            )}
+            <button
+              onClick={() => { setInputSearch(''); setSegment(''); setSortBy('') }}
+              className="text-[11px] text-luma-faint hover:text-red-500 transition-colors ml-auto"
+            >
+              Limpiar todo
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Table */}
+      {/* ── Tabla ── */}
+      {loading && !hasLoaded ? <PageLoader /> : null}
       <div className="card overflow-hidden">
-        {customers.length === 0 ? (
-          loading ? null :
-            <EmptyState icon={Users} title="Sin clientes" description="Registra el primer cliente." action={<Button variant="teal" icon={Plus} size="sm" onClick={() => setFormData({})}>Nuevo cliente</Button>} />
+        {customers.length === 0 && hasLoaded ? (
+          <EmptyState
+            icon={Users}
+            title="Sin clientes"
+            description={hasActiveFilters ? 'No hay clientes con los filtros actuales.' : 'Registra el primer cliente.'}
+            action={
+              hasActiveFilters
+                ? (
+                  <button
+                    onClick={() => { setInputSearch(''); setSegment(''); setSortBy('') }}
+                    className="text-[12px] text-teal-600 hover:underline"
+                  >
+                    Limpiar filtros
+                  </button>
+                )
+                : <Button variant="teal" icon={Plus} size="sm" onClick={() => setFormData({})}>Nuevo cliente</Button>
+            }
+          />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="luma-table">
-              <thead>
-                <tr>
-                  <th>Cliente</th>
-                  <th>Segmento</th>
-                  <th>Compras</th>
-                  <th>Gasto total</th>
-                  <th>Puntos</th>
-                </tr>
-              </thead>
-              <tbody>
-                {customers.map(c => (
-                  <CustomerRow key={c.id} customer={c} onView={(c) => { setViewCustomer(c); setFormData(null) }} />
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <>
+            {/* Mobile cards */}
+            <div className={`sm:hidden divide-y divide-luma-border ${loading ? 'opacity-50' : ''}`}>
+              {loading && !hasLoaded
+                ? Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i} className="px-4 py-3 flex items-center gap-3 animate-pulse">
+                      <div className="w-9 h-9 bg-cream-200 rounded-xl flex-shrink-0" />
+                      <div className="flex-1 space-y-1.5">
+                        <div className="h-3 bg-cream-200 rounded w-32" />
+                        <div className="h-2.5 bg-cream-100 rounded w-20" />
+                      </div>
+                    </div>
+                  ))
+                : customers.map(c => (
+                    <CustomerMobileCard key={c.id} customer={c} onView={(c) => { setViewCustomer(c); setFormData(null) }} />
+                  ))
+              }
+            </div>
+            {/* Desktop table */}
+            <div className={`hidden sm:block overflow-x-auto ${loading ? 'opacity-50' : ''}`}>
+              <table className="luma-table">
+                <thead>
+                  <tr>
+                    <th>Cliente</th>
+                    <th>Segmento</th>
+                    <th>Compras</th>
+                    <th>Gasto total</th>
+                    <th>Puntos</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading
+                    ? Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} cols={5} />)
+                    : customers.map(c => (
+                        <CustomerRow key={c.id} customer={c} onView={(c) => { setViewCustomer(c); setFormData(null) }} />
+                      ))
+                  }
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
 

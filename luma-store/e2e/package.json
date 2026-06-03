@@ -1,0 +1,19 @@
+{
+  "name": "luma-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Suite de pruebas E2E para LUMA Store (Playwright)",
+  "type": "module",
+  "scripts": {
+    "test":          "playwright test",
+    "test:store":    "playwright test --project=store",
+    "test:admin":    "playwright test --project=admin",
+    "test:headed":   "playwright test --headed",
+    "test:debug":    "playwright test --debug",
+    "report":        "playwright show-report",
+    "setup-fixtures": "cd ../backend && venv/Scripts/python.exe manage.py create_e2e_fixtures"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
+  }
+}

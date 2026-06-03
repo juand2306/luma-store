@@ -1,7 +1,7 @@
 from rest_framework import viewsets, generics, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from django.db.models import Sum, Count, Max, Q
+from django.db.models import Sum, Count, Max, Q, F
 from django.utils import timezone
 from datetime import timedelta
 
@@ -46,7 +46,11 @@ class CustomerViewSet(viewsets.ModelViewSet):
         segment = self.request.query_params.get("segment")
         order_by = self.request.query_params.get("order_by")
         if search:
-            qs = qs.filter(Q(name__icontains=search) | Q(phone__icontains=search))
+            qs = qs.filter(
+                Q(name__icontains=search)
+                | Q(phone__icontains=search)
+                | Q(email__icontains=search)
+            )
         # Filtro por segmento basado en anotaciones (sin tocar el property)
         if segment == "new":
             qs = qs.filter(
@@ -62,13 +66,15 @@ class CustomerViewSet(viewsets.ModelViewSet):
         if order_by == "purchases":
             qs = qs.order_by("-purchase_count_annotated")
         elif order_by == "spent":
-            qs = qs.order_by("-total_purchases_annotated")
+            # nulls_last=True: clientes sin compras van al final, no al principio (PostgreSQL)
+            qs = qs.order_by(F("total_purchases_annotated").desc(nulls_last=True))
         elif order_by == "points":
             qs = qs.order_by("-points")
         elif order_by == "name":
             qs = qs.order_by("name")
         elif order_by == "recent":
-            qs = qs.order_by("-last_purchase_annotated")
+            # nulls_last=True: clientes sin compras van al final (no al principio) en PostgreSQL
+            qs = qs.order_by(F("last_purchase_annotated").desc(nulls_last=True))
         return qs
 
     @action(detail=False, methods=["get"])

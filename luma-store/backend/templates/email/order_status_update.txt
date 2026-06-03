@@ -1,0 +1,14 @@
+{{ emoji }} {{ title }}
+
+Hola {{ customer.name }},
+
+{{ description }}
+
+══════════════════════════════
+Número de pedido: {{ order.number }}
+══════════════════════════════
+
+¿Necesitas ayuda? Escríbenos por WhatsApp:
+https://wa.me/{{ config.whatsapp }}
+
+— {{ config.name }}

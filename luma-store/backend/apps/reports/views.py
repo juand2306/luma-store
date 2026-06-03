@@ -6,12 +6,29 @@ from django.db.models import Sum, Count, F, Q, Case, When, Value, DecimalField
 from django.db.models.functions import TruncDate
 
 from apps.users.permissions import CanViewOnly
-from apps.sales.models import Sale, SaleItem
+from apps.sales.models import Sale, SaleItem, Return
 from apps.orders.models import Order, PurchaseOrder
 from apps.inventory.models import ProductVariant, StockMovement, Product
 from apps.cash.models import CashSession
 
 import io
+
+# Etiquetas de métodos de pago base (el campo Sale.payment_method no usa choices,
+# así que get_payment_method_display() no existe — usamos este dict como fallback).
+_BASE_PAYMENT_LABELS = {
+    "cash":      "Efectivo",
+    "transfer":  "Transferencia",
+    "debit":     "Débito",
+    "credit":    "Crédito",
+    "nequi":     "Nequi",
+    "daviplata": "Daviplata",
+    "other":     "Otro",
+}
+
+
+def _payment_label(key: str) -> str:
+    """Devuelve la etiqueta legible de un método de pago dado su clave."""
+    return _BASE_PAYMENT_LABELS.get(key, key)
 
 
 def _pct_change(current, previous):
@@ -97,12 +114,13 @@ class DashboardView(APIView):
             }
 
         # ── Gráfica de ventas — últimos 30 días (1 query) ────────────────────
+        tz = timezone.get_current_timezone()
         sales_day_map = {
             str(row["day"]): float(row["t"])
             for row in (
                 Sale.objects
                 .filter(created_at__date__gte=thirty_days_start)
-                .annotate(day=TruncDate("created_at"))
+                .annotate(day=TruncDate("created_at", tzinfo=tz))
                 .values("day")
                 .annotate(t=Sum("total"))
             )
@@ -120,7 +138,7 @@ class DashboardView(APIView):
             for row in (
                 Order.objects
                 .filter(created_at__date__gte=fourteen_days_start)
-                .annotate(day=TruncDate("created_at"))
+                .annotate(day=TruncDate("created_at", tzinfo=tz))
                 .values("day")
                 .annotate(cnt=Count("id"))
             )
@@ -331,11 +349,23 @@ class SalesReportView(APIView):
         from datetime import date, timedelta
         from django.db.models import Q
 
-        days = int(request.query_params.get("days", 30))
+        from_date_str = request.query_params.get("from_date")
+        to_date_str   = request.query_params.get("to_date")
         payment = request.query_params.get("payment_method")
 
-        end_date   = timezone.now().date()
-        start_date = end_date - timedelta(days=days - 1)
+        if from_date_str and to_date_str:
+            try:
+                start_date = date.fromisoformat(from_date_str)
+                end_date   = date.fromisoformat(to_date_str)
+                days = max(1, (end_date - start_date).days + 1)
+            except ValueError:
+                end_date   = timezone.now().date()
+                days = int(request.query_params.get("days", 30))
+                start_date = end_date - timedelta(days=days - 1)
+        else:
+            days = int(request.query_params.get("days", 30))
+            end_date   = timezone.now().date()
+            start_date = end_date - timedelta(days=days - 1)
 
         qs = Sale.objects.filter(created_at__date__gte=start_date, created_at__date__lte=end_date)
         if payment:
@@ -343,13 +373,26 @@ class SalesReportView(APIView):
 
         # ── Totales ────────────────────────────────────────
         totals = qs.aggregate(total=Sum("total"), count=Count("id"))
-        total_revenue = float(totals["total"] or 0)
+        gross_revenue = float(totals["total"] or 0)
         total_sales   = totals["count"] or 0
+
+        # Restar devoluciones del período
+        returns_agg = Return.objects.filter(
+            created_at__date__gte=start_date,
+            created_at__date__lte=end_date,
+            type=Return.ReturnType.RETURN,
+        ).aggregate(
+            refunded=Sum(F("returned_price") * F("returned_quantity"), output_field=DecimalField())
+        )
+        total_refunded = float(returns_agg["refunded"] or 0)
+        total_revenue = max(0, gross_revenue - total_refunded)
+
         daily_avg     = round(total_revenue / days, 2) if days else 0
 
         # ── Ventas por día (1 query con TruncDate) ─────────
+        tz = timezone.get_current_timezone()
         sales_by_day_qs = (
-            qs.annotate(day=TruncDate("created_at"))
+            qs.annotate(day=TruncDate("created_at", tzinfo=tz))
             .values("day")
             .annotate(t=Sum("total"))
         )
@@ -478,7 +521,7 @@ class ExportSalesView(APIView):
                     sale.customer.name if sale.customer else "",
                     float(sale.subtotal),
                     float(sale.total),
-                    sale.get_payment_method_display(),
+                    _payment_label(sale.payment_method),
                     sale.sold_by.get_full_name() if sale.sold_by else "",
                     sale.points_used,
                     sale.points_earned,
@@ -528,7 +571,7 @@ class ExportSalesView(APIView):
                 float(sale.subtotal),
                 round(discount, 2),
                 float(sale.total),
-                sale.get_payment_method_display(),
+                _payment_label(sale.payment_method),
                 sale.sold_by.get_full_name() if sale.sold_by else "-",
                 sale.points_earned,
             ])
@@ -650,9 +693,9 @@ class InventoryReportView(APIView):
                 "min_stock": p.min_stock,
             })
 
-        # Categorías disponibles (para los selects del frontend)
+        # Categorías disponibles (solo activas, para los selects del frontend)
         from apps.inventory.models import Category
-        categories = list(Category.objects.values("id", "name").order_by("name"))
+        categories = list(Category.objects.filter(is_active=True).values("id", "name").order_by("name"))
 
         return Response({
             "total_products": len(products_list),
@@ -764,7 +807,7 @@ class ProductReportView(APIView):
         slow_movers = slow_movers[:10]
 
         from apps.inventory.models import Category
-        categories = list(Category.objects.values("id", "name").order_by("name"))
+        categories = list(Category.objects.filter(is_active=True).values("id", "name").order_by("name"))
 
         return Response({
             "top_by_revenue": top_revenue_list,
@@ -963,11 +1006,6 @@ class CashReportView(APIView):
             }
             for p in by_payment
         ]
-
-        # Días con mayor ingreso
-        daily_income = {}
-        for s in sessions_data:
-            daily_income[s["date"]] = s["income"]
 
         return Response({
             "total_sessions": len(sessions_data),

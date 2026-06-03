@@ -180,7 +180,10 @@ class CashSessionViewSet(viewsets.ModelViewSet):
         session.note           = note
         session.closed_by      = request.user
         session.closed_at      = timezone.now()
-        session.save()
+        session.save(update_fields=[
+            "closing_amount", "counted_amount", "difference",
+            "status", "auto_closed", "note", "closed_by", "closed_at",
+        ])
 
         return Response(CashSessionSerializer(session, context={"request": request}).data)
 

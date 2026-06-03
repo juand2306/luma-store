@@ -18,9 +18,10 @@ export function buildWhatsAppUrl(phoneNumber, message) {
 export function buildOrderMessage(order, template) {
   const productLines = order.items
     .map((item) => {
-      const size = item.variant?.size || item.size || "";
-      const color = item.variant?.color || item.color || "";
-      const productName = item.variant?.product?.name || item.product_name || item.name || "";
+      // El serializer ahora expone size y color directamente en el item
+      const size        = item.size  || "";
+      const color       = item.color || "";
+      const productName = item.product_name || item.name || "";
       const qty = item.quantity;
       const sub = Number(item.subtotal).toLocaleString("es-CO");
       return `  - ${productName}${size ? ` talla ${size}` : ""}${color ? ` color ${color}` : ""} x${qty} — $${sub}`;

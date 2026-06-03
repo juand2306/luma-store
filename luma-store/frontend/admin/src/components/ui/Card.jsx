@@ -11,9 +11,11 @@ export function Card({ children, className = '', hover = false, onClick }) {
 }
 
 // ─── KPI Stat Card ────────────────────────────────────────────────────────────
-export function StatCard({ label, value, sub, change, icon: Icon, accent = false, chart }) {
-  const hasChange  = change !== undefined && change !== null
-  const isPositive = hasChange && change >= 0
+export function StatCard({ label, value, sub, change, icon: Icon, accent = false, chart, iconBg, iconColor }) {
+  const hasChange       = change !== undefined && change !== null
+  const isPositive      = hasChange && change >= 0
+  const resolvedIconBg  = accent ? 'bg-white/20' : (iconBg  || 'bg-cream-200')
+  const resolvedIconClr = accent ? 'text-white'  : (iconColor || 'text-luma-muted')
   return (
     <div className={`card p-5 flex flex-col gap-3 hover:shadow-card-md transition-all duration-300
       ${accent ? 'gradient-teal text-white border-0' : ''}`}
@@ -28,8 +30,8 @@ export function StatCard({ label, value, sub, change, icon: Icon, accent = false
         </div>
         <div className="flex flex-col items-end gap-2">
           {Icon && (
-            <div className={`p-2 rounded-xl ${accent ? 'bg-white/20' : 'bg-cream-200'}`}>
-              <Icon size={16} className={accent ? 'text-white' : 'text-luma-muted'} />
+            <div className={`p-2 rounded-xl ${resolvedIconBg}`}>
+              <Icon size={16} className={resolvedIconClr} />
             </div>
           )}
           {hasChange && (

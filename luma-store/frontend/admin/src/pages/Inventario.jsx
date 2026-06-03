@@ -5,9 +5,11 @@ import {
   Plus, Search, Filter, RefreshCw,
   Package, AlertTriangle, MoreHorizontal,
   Edit2, Trash2, Eye, EyeOff, Tag, Box, TrendingDown, ShoppingBag,
-  Upload, Copy, PowerOff, Zap, X, ChevronDown, CheckCircle, ArrowRight
+  Upload, Copy, PowerOff, Zap, X, CheckCircle, ArrowRight,
+  DollarSign, Layers, Check, Star, Download,
 } from 'lucide-react'
 import api from '../api/client'
+import { downloadFile } from '../utils/downloadFile'
 
 import { Button } from '../components/ui/Button'
 import { Badge, StatusBadge, CategoryBadge } from '../components/ui/Badge'
@@ -31,11 +33,87 @@ function stockLevel(stock, min) {
   return                         { level: '',    label: 'En stock',cls: 'text-teal-600' }
 }
 
+// ── Product Mobile Card (visible only on small screens) ───────────────────────
+function ProductMobileCard({ product, categories, onView, onEdit, onVariants, onMovement, onToggleVisible, onToggleStatus, onDuplicate, onDelete }) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const sl = stockLevel(product.total_stock, product.min_stock || 3)
+  const close = () => setMenuOpen(false)
+
+  return (
+    <div
+      className={`flex items-center gap-3 p-3 cursor-pointer hover:bg-cream-50 transition-colors ${product.status === 'inactive' ? 'opacity-60' : ''}`}
+      onClick={() => onView(product)}
+    >
+      {product.main_image ? (
+        <img src={product.main_image} alt="" className="w-11 h-11 rounded-xl object-cover flex-shrink-0 border border-luma-border" />
+      ) : (
+        <div className="w-11 h-11 bg-cream-200 rounded-xl flex items-center justify-center flex-shrink-0">
+          <Package size={15} className="text-luma-faint" />
+        </div>
+      )}
+      <div className="flex-1 min-w-0">
+        <p className="text-[13px] font-semibold text-luma-text truncate">{product.name}</p>
+        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+          <span className="text-[10px] text-luma-faint font-mono">{product.sku_base}</span>
+          <span className={`text-[11px] font-bold ${sl.cls}`}>{product.total_stock} ud.</span>
+          <span className="text-[11px] font-semibold text-luma-text">{fmt(product.price)}</span>
+        </div>
+        <div className="flex items-center gap-1.5 mt-1">
+          <StatusBadge status={product.status} />
+          {!product.is_visible && (
+            <span className="text-[9px] text-luma-faint flex items-center gap-0.5">
+              <EyeOff size={9} /> Oculto
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="flex items-center gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
+        <button onClick={() => onEdit(product)} className="p-1.5 rounded-lg hover:bg-cream-200 text-luma-muted hover:text-teal-600 transition-colors" title="Editar">
+          <Edit2 size={14} />
+        </button>
+        <div className="relative">
+          <button onClick={() => setMenuOpen(!menuOpen)} className="p-1.5 rounded-lg hover:bg-cream-200 text-luma-muted transition-colors">
+            <MoreHorizontal size={14} />
+          </button>
+          {menuOpen && (
+            <div className="absolute right-0 top-9 w-48 bg-white border border-luma-border rounded-xl shadow-card-md z-20 py-1 animate-scale-in">
+              <button onClick={() => { onView(product); close() }} className="w-full text-left px-4 py-2 text-[12px] hover:bg-cream-100 text-luma-text flex items-center gap-2">
+                <Eye size={12} /> Ver detalle
+              </button>
+              <button onClick={() => { onVariants(product); close() }} className="w-full text-left px-4 py-2 text-[12px] hover:bg-cream-100 text-luma-text flex items-center gap-2">
+                <Tag size={12} /> Variantes
+              </button>
+              <button onClick={() => { onMovement(product); close() }} className="w-full text-left px-4 py-2 text-[12px] hover:bg-cream-100 text-luma-text flex items-center gap-2">
+                <Box size={12} /> Movimiento
+              </button>
+              <button onClick={() => { onToggleVisible(product); close() }} className="w-full text-left px-4 py-2 text-[12px] hover:bg-cream-100 text-luma-text flex items-center gap-2">
+                {product.is_visible ? <EyeOff size={12} /> : <Eye size={12} />}
+                {product.is_visible ? 'Ocultar en tienda' : 'Publicar en tienda'}
+              </button>
+              <button onClick={() => { onToggleStatus(product); close() }} className="w-full text-left px-4 py-2 text-[12px] hover:bg-cream-100 text-luma-text flex items-center gap-2">
+                {product.status === 'inactive' ? <Zap size={12} className="text-teal-500" /> : <PowerOff size={12} className="text-amber-500" />}
+                {product.status === 'inactive' ? 'Activar' : 'Desactivar'}
+              </button>
+              <button onClick={() => { onDuplicate(product); close() }} className="w-full text-left px-4 py-2 text-[12px] hover:bg-cream-100 text-luma-text flex items-center gap-2">
+                <Copy size={12} /> Duplicar
+              </button>
+              <hr className="my-1 border-luma-border" />
+              <button onClick={() => { onDelete(product); close() }} className="w-full text-left px-4 py-2 text-[12px] hover:bg-red-50 text-red-600 flex items-center gap-2">
+                <Trash2 size={12} /> Eliminar
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Product Row ───────────────────────────────────────────────────────────────
 function ProductRow({ product, categories, onView, onEdit, onVariants, onMovement, onToggleVisible, onToggleStatus, onDuplicate, onDelete }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const sl = stockLevel(product.total_stock, product.min_stock || 3)
-  const catName = categories.find(c => c.id === product.category)?.name || '—'
+  const catName = categories.find(c => c.id === product.category)?.displayName || '—'
   const closeMenu = () => setMenuOpen(false)
 
   return (
@@ -54,7 +132,12 @@ function ProductRow({ product, categories, onView, onEdit, onVariants, onMovemen
             </div>
           )}
           <div className="min-w-0">
-            <p className="text-[13px] font-semibold text-luma-text truncate max-w-[180px]">{product.name}</p>
+            <div className="flex items-center gap-1.5">
+              <p className="text-[13px] font-semibold text-luma-text truncate max-w-[180px]">{product.name}</p>
+              {product.is_featured && (
+                <Star size={11} className="text-amber-400 fill-amber-400 flex-shrink-0" title="Destacado" />
+              )}
+            </div>
             <p className="text-[11px] text-luma-faint font-mono">{product.sku_base}</p>
           </div>
         </div>
@@ -138,8 +221,24 @@ function ProductRow({ product, categories, onView, onEdit, onVariants, onMovemen
   )
 }
 
-// ── Main Page ─────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 const PAGE_SIZE = 50
+
+/**
+ * Aplana el árbol de categorías (raíz + subcategorías) en una lista plana.
+ * Las subcategorías se muestran con el nombre completo "Padre › Hijo".
+ */
+function flattenCategories(cats, parentName = '') {
+  const result = []
+  for (const cat of cats) {
+    const displayName = parentName ? `${parentName} › ${cat.name}` : cat.name
+    result.push({ ...cat, displayName })
+    if (Array.isArray(cat.subcategories) && cat.subcategories.length > 0) {
+      result.push(...flattenCategories(cat.subcategories, cat.name))
+    }
+  }
+  return result
+}
 
 export default function Inventario() {
   const location = useLocation()
@@ -153,6 +252,8 @@ export default function Inventario() {
   const [filterStatus,  setFilterStatus]  = useState('')
   const [filterVisible, setFilterVisible] = useState('') // '' | 'visible' | 'hidden'
   const [filterLowStock,setFilterLowStock]= useState(false)
+  const [filterFeatured,setFilterFeatured]= useState(false)
+  const [exportLoading, setExportLoading] = useState(false)
   const [page,          setPage]          = useState(1)
   const [totalCount,    setTotalCount]    = useState(0)
 
@@ -192,9 +293,24 @@ export default function Inventario() {
     if (filterStatus)  p.status     = filterStatus
     if (filterVisible === 'visible') p.is_visible = true
     if (filterVisible === 'hidden')  p.is_visible = false
-    if (filterLowStock) p.low_stock = 'true'
+    if (filterLowStock)  p.low_stock   = 'true'
+    if (filterFeatured)  p.is_featured = true
     return p
-  }, [search, filterCat, filterStatus, filterVisible, filterLowStock])
+  }, [search, filterCat, filterStatus, filterVisible, filterLowStock, filterFeatured])
+
+  const handleExport = async () => {
+    setExportLoading(true)
+    try {
+      await downloadFile('/api/v1/reports/export/inventory/', {
+        ...(filterCat    ? { category: filterCat }  : {}),
+        ...(filterStatus ? { status: filterStatus }  : {}),
+      })
+    } catch (e) {
+      toast.error('Error al exportar inventario')
+    } finally {
+      setExportLoading(false)
+    }
+  }
 
   // Carga los KPIs del catálogo completo (sin paginar) — separado de la lista
   const loadStats = useCallback(async () => {
@@ -218,7 +334,8 @@ export default function Inventario() {
       setProducts(Array.isArray(prods) ? prods : [])
       setTotalCount(prodRes.data?.count ?? 0)
       const cats = catRes.data?.results ?? catRes.data
-      setCategories(Array.isArray(cats) ? cats : [])
+      // Aplanar el árbol de categorías para poder buscar por ID en cualquier nivel
+      setCategories(flattenCategories(Array.isArray(cats) ? cats : []))
     } catch {
       toast.error('Error cargando el inventario')
     } finally {
@@ -308,11 +425,16 @@ export default function Inventario() {
     <div className="space-y-5 animate-fade-up">
       {/* ── Header ── */}
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-        <div>
-          <h2 className="page-title">Catálogo</h2>
-          <p className="text-[13px] text-luma-muted mt-0.5">
-            {totalCount.toLocaleString('es-CO')} productos en total
-          </p>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-teal-50 rounded-2xl flex items-center justify-center flex-shrink-0">
+            <Package size={20} className="text-teal-600" />
+          </div>
+          <div>
+            <h1 className="page-title">Inventario</h1>
+            <p className="text-[13px] text-luma-muted mt-0.5">
+              {totalCount.toLocaleString('es-CO')} productos en total
+            </p>
+          </div>
         </div>
         <div className="flex gap-2 flex-wrap">
           <Button variant="outline" size="sm" icon={Filter} onClick={() => setShowCatModal(true)}>
@@ -321,6 +443,15 @@ export default function Inventario() {
           <Button variant="outline" size="sm" icon={Upload} onClick={() => setShowCsvModal(true)}>
             Importar CSV
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            icon={Download}
+            loading={exportLoading}
+            onClick={handleExport}
+          >
+            Exportar
+          </Button>
           <Button variant="teal" size="sm" icon={Plus} onClick={() => setEditProduct({})}>
             Nuevo producto
           </Button>
@@ -328,25 +459,47 @@ export default function Inventario() {
       </div>
 
       {/* ── Tabs ── */}
-      <div className="flex gap-1 p-1 bg-cream-100 rounded-2xl w-fit">
-        {[
-          { key: 'catalog',    label: 'Catálogo' },
-          { key: 'movements',  label: 'Movimientos' },
-          { key: 'alerts',     label: `Alertas${(stats.out_of_stock + stats.low_stock) > 0 ? ` (${stats.out_of_stock + stats.low_stock})` : ''}` },
-          { key: 'prediction', label: 'Reabastecimiento' },
-        ].map(t => (
-          <button
-            key={t.key}
-            onClick={() => setActiveTab(t.key)}
-            className={`px-4 py-2 text-[12px] font-semibold rounded-xl transition-all ${
-              activeTab === t.key
-                ? 'bg-white text-teal-600 shadow-sm'
-                : 'text-luma-muted hover:text-luma-text'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
+      <div className="overflow-x-auto -mx-1 px-1">
+        <div className="flex gap-1 p-1 bg-cream-100 rounded-2xl w-fit min-w-full sm:min-w-0">
+          {[
+            { key: 'catalog',    label: 'Catálogo' },
+            { key: 'movements',  label: 'Movimientos' },
+            {
+              key: 'alerts',
+              label: (
+                <>
+                  Alertas
+                  {(stats.out_of_stock + stats.low_stock) > 0 && (
+                    <span className="ml-1 px-1.5 py-0.5 bg-red-100 text-red-600 rounded-full text-[10px] font-bold">
+                      {stats.out_of_stock + stats.low_stock}
+                    </span>
+                  )}
+                </>
+              ),
+            },
+            {
+              key: 'prediction',
+              label: (
+                <>
+                  <span className="hidden sm:inline">Reabastecimiento</span>
+                  <span className="sm:hidden">Reabastecer</span>
+                </>
+              ),
+            },
+          ].map(t => (
+            <button
+              key={t.key}
+              onClick={() => setActiveTab(t.key)}
+              className={`flex items-center px-4 py-2 text-[12px] font-semibold rounded-xl transition-all whitespace-nowrap ${
+                activeTab === t.key
+                  ? 'bg-white text-teal-600 shadow-sm'
+                  : 'text-luma-muted hover:text-luma-text'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* KPI Strip ─ siempre visible — datos del catálogo completo (sin paginar) */}
@@ -356,76 +509,176 @@ export default function Inventario() {
             label: 'Total productos',
             value: stats.total.toLocaleString('es-CO'),
             sub: `${stats.out_of_stock} agotados`,
-            color: 'text-luma-text'
+            color: 'text-luma-text',
+            icon: Package, iconBg: 'bg-cream-200', iconCls: 'text-luma-muted',
           },
           {
             label: 'Valor del inventario',
-            value: `$${(stats.total_value/1000).toFixed(1)}k`,
+            value: `$${(stats.total_value / 1000).toFixed(1)}k`,
             sub: 'Valorado a precio de venta',
-            color: 'text-teal-600'
+            color: 'text-teal-600',
+            icon: DollarSign, iconBg: 'bg-teal-50', iconCls: 'text-teal-500',
           },
           {
             label: 'Agotados',
             value: stats.out_of_stock,
             sub: `${stats.low_stock} con stock bajo`,
-            color: stats.out_of_stock > 0 ? 'text-red-500' : 'text-teal-600'
+            color: stats.out_of_stock > 0 ? 'text-red-500' : 'text-teal-600',
+            icon: AlertTriangle,
+            iconBg: stats.out_of_stock > 0 ? 'bg-red-50' : 'bg-teal-50',
+            iconCls: stats.out_of_stock > 0 ? 'text-red-500' : 'text-teal-500',
           },
           {
             label: 'Categorías activas',
             value: categories.filter(c => c.is_active !== false).length,
             sub: 'Total de categorías',
-            color: 'text-luma-text'
+            color: 'text-luma-text',
+            icon: Layers, iconBg: 'bg-blue-50', iconCls: 'text-blue-500',
           },
-        ].map((kpi) => (
-          <div key={kpi.label} className="card p-4">
-            <p className="section-label">{kpi.label}</p>
-            <p className={`text-xl font-bold mt-1 ${kpi.color}`}>{kpi.value}</p>
-            {kpi.sub && <p className="text-[11px] text-luma-faint mt-0.5">{kpi.sub}</p>}
-          </div>
-        ))}
+        ].map((kpi) => {
+          const Icon = kpi.icon
+          return (
+            <div key={kpi.label} className="card p-4">
+              <div className="flex items-start justify-between mb-2">
+                <p className="section-label">{kpi.label}</p>
+                <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${kpi.iconBg}`}>
+                  <Icon size={15} className={kpi.iconCls} />
+                </div>
+              </div>
+              <p className={`text-xl font-bold ${kpi.color}`}>{kpi.value}</p>
+              {kpi.sub && <p className="text-[11px] text-luma-faint mt-0.5">{kpi.sub}</p>}
+            </div>
+          )
+        })}
       </div>
 
       {/* ── TAB: Catálogo ── */}
       {activeTab === 'catalog' && (
         <>
-          {/* Filters (6.1) */}
-          <div className="card p-4 flex flex-col sm:flex-row gap-3 flex-wrap">
-            <div className="relative flex-1 min-w-[180px]">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-luma-faint pointer-events-none" />
-              <input type="text" placeholder="Buscar por nombre o SKU..." value={inputSearch}
-                onChange={e => setInputSearch(e.target.value)}
-                className="input-base" style={{ paddingLeft: '2.25rem' }} />
+          {/* Filters */}
+          <div className="card p-4 space-y-3">
+            {/* Row 1: búsqueda + refresh */}
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-luma-faint pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Buscar por nombre o SKU..."
+                  value={inputSearch}
+                  onChange={e => setInputSearch(e.target.value)}
+                  className="input-base"
+                  style={{ paddingLeft: '2.25rem' }}
+                />
+              </div>
+              <button
+                onClick={() => { load(1); loadStats() }}
+                className="btn-ghost flex-shrink-0 px-3"
+                title="Actualizar"
+              >
+                <RefreshCw size={15} />
+              </button>
             </div>
-            <select value={filterCat} onChange={e => setFilterCat(e.target.value)}
-              className="input-base w-full sm:w-40">
-              <option value="">Todas las categorías</option>
-              {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
-              className="input-base w-full sm:w-36">
-              <option value="">Todos los estados</option>
-              <option value="active">Activo</option>
-              <option value="out">Agotado</option>
-              <option value="inactive">Inactivo</option>
-            </select>
-            <select value={filterVisible} onChange={e => setFilterVisible(e.target.value)}
-              className="input-base w-full sm:w-36">
-              <option value="">Visibilidad</option>
-              <option value="visible">Visible en catálogo</option>
-              <option value="hidden">Ocultos</option>
-            </select>
-            <label className="flex items-center gap-2 cursor-pointer px-3 py-2 rounded-xl border border-luma-border hover:bg-cream-100 transition-colors flex-shrink-0">
-              <input type="checkbox" checked={filterLowStock}
-                onChange={e => setFilterLowStock(e.target.checked)}
-                className="accent-teal-600" />
-              <span className="text-[12px] text-luma-muted whitespace-nowrap">Stock bajo</span>
-            </label>
-            <button onClick={() => { load(1); loadStats() }} className="btn-ghost flex-shrink-0" title="Actualizar"><RefreshCw size={15} /></button>
+            {/* Row 2: selects en grid 2×2 en móvil, fila en desktop */}
+            <div className="grid grid-cols-2 sm:flex sm:flex-row gap-2">
+              <select
+                value={filterCat}
+                onChange={e => setFilterCat(e.target.value)}
+                className="input-base sm:w-44 col-span-2"
+              >
+                <option value="">Todas las categorías</option>
+                {categories.map(c => <option key={c.id} value={c.id}>{c.displayName || c.name}</option>)}
+              </select>
+              <select
+                value={filterStatus}
+                onChange={e => setFilterStatus(e.target.value)}
+                className="input-base sm:w-36"
+              >
+                <option value="">Estado</option>
+                <option value="active">Activo</option>
+                <option value="out">Agotado</option>
+                <option value="inactive">Inactivo</option>
+              </select>
+              <select
+                value={filterVisible}
+                onChange={e => setFilterVisible(e.target.value)}
+                className="input-base sm:w-36"
+              >
+                <option value="">Visibilidad</option>
+                <option value="visible">Visible</option>
+                <option value="hidden">Ocultos</option>
+              </select>
+              <label className="flex items-center gap-2 cursor-pointer px-3 py-2 rounded-xl border border-luma-border hover:bg-cream-100 transition-colors col-span-2 sm:col-span-1">
+                <input
+                  type="checkbox"
+                  checked={filterLowStock}
+                  onChange={e => setFilterLowStock(e.target.checked)}
+                  className="accent-teal-600"
+                />
+                <span className="text-[12px] text-luma-muted whitespace-nowrap">Stock bajo</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer px-3 py-2 rounded-xl border border-luma-border hover:bg-cream-100 transition-colors col-span-2 sm:col-span-1">
+                <input
+                  type="checkbox"
+                  checked={filterFeatured}
+                  onChange={e => setFilterFeatured(e.target.checked)}
+                  className="accent-amber-500"
+                />
+                <Star size={11} className="text-amber-400" />
+                <span className="text-[12px] text-luma-muted whitespace-nowrap">Destacados</span>
+              </label>
+            </div>
           </div>
 
-          {/* Table */}
+          {/* Table + Mobile cards */}
           <div className="card overflow-hidden">
-            <div className="overflow-x-auto">
+
+            {/* ── Mobile list (hidden on sm+) ── */}
+            <div className="sm:hidden divide-y divide-luma-border">
+              {loading ? (
+                Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-3 p-3 animate-pulse">
+                    <div className="w-11 h-11 bg-cream-200 rounded-xl flex-shrink-0" />
+                    <div className="flex-1 space-y-1.5">
+                      <div className="h-3 bg-cream-200 rounded w-2/3" />
+                      <div className="h-2.5 bg-cream-200 rounded w-1/2" />
+                      <div className="h-2 bg-cream-200 rounded w-1/3" />
+                    </div>
+                  </div>
+                ))
+              ) : products.length === 0 ? (
+                <div className="py-16 text-center">
+                  <EmptyState
+                    icon={Package}
+                    title="Sin productos"
+                    description='Crea tu primer producto con el botón "Nuevo producto"'
+                    action={
+                      <Button variant="teal" size="sm" icon={Plus} onClick={() => setEditProduct({})}>
+                        Nuevo producto
+                      </Button>
+                    }
+                  />
+                </div>
+              ) : (
+                products.map(p => (
+                  <ProductMobileCard
+                    key={p.id}
+                    product={p}
+                    categories={categories}
+                    onView={setDetailProduct}
+                    onEdit={handleEditProduct}
+                    onVariants={setVariantProduct}
+                    onMovement={setMovementProduct}
+                    onToggleVisible={handleToggleVisible}
+                    onToggleStatus={handleToggleStatus}
+                    onDuplicate={handleDuplicate}
+                    onDelete={setConfirmDelete}
+                  />
+                ))
+              )}
+            </div>
+
+            {/* ── Desktop table (hidden on mobile) ── */}
+            <div className="hidden sm:block overflow-x-auto">
               <table className="luma-table">
                 <thead>
                   <tr>
@@ -441,7 +694,7 @@ export default function Inventario() {
                 </thead>
                 <tbody>
                   {loading ? (
-                    Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} cols={6} />)
+                    Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} cols={8} />)
                   ) : products.length === 0 ? (
                     <tr>
                       <td colSpan={8} className="py-16 text-center">
@@ -924,8 +1177,6 @@ function MovimientosPanel() {
 
   useEffect(() => { load() }, [load])
 
-  const totalPages = Math.ceil(count / PAGE_SZ)
-
   const clearFilters = () => {
     setFilterType('')
     setFilterDateFrom('')
@@ -1070,29 +1321,14 @@ function MovimientosPanel() {
             </tbody>
           </table>
         </div>
-        {totalPages > 1 && (
-          <div className="px-5 py-3 border-t border-luma-border flex items-center justify-between">
-            <span className="text-[12px] text-luma-muted">
-              Página {page} de {totalPages} · {count} movimientos
-            </span>
-            <div className="flex gap-1">
-              <button
-                onClick={() => setPage(p => Math.max(1, p - 1))}
-                disabled={page === 1}
-                className="px-3 py-1.5 text-[12px] rounded-lg border border-luma-border hover:bg-cream-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              >
-                Anterior
-              </button>
-              <button
-                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages}
-                className="px-3 py-1.5 text-[12px] rounded-lg border border-luma-border hover:bg-cream-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              >
-                Siguiente
-              </button>
-            </div>
-          </div>
-        )}
+        <div className="px-5 py-3 border-t border-luma-border">
+          <Pagination
+            page={page}
+            totalCount={count}
+            pageSize={PAGE_SZ}
+            onPageChange={setPage}
+          />
+        </div>
       </div>
     </div>
   )
@@ -1100,13 +1336,14 @@ function MovimientosPanel() {
 
 // ── Category Manager Modal ────────────────────────────────────────────────────
 function CategoryModal({ open, onClose }) {
-  const [cats, setCats]       = useState([])
-  const [loading, setLoading] = useState(false)
-  const [saving, setSaving]   = useState(false)
-  const [editId, setEditId]   = useState(null)
-  const [editName, setEditName] = useState('')
-  const [newName, setNewName]   = useState('')
-  const [newParent, setNewParent] = useState('')   // '' = raíz, id = subcategoría
+  const [cats, setCats]             = useState([])
+  const [loading, setLoading]       = useState(false)
+  const [saving, setSaving]         = useState(false)
+  const [editId, setEditId]         = useState(null)
+  const [editName, setEditName]     = useState('')
+  const [newName, setNewName]       = useState('')
+  const [newParent, setNewParent]   = useState('')   // '' = raíz, id = subcategoría
+  const [confirmDeleteCat, setConfirmDeleteCat] = useState(null)
 
   const load = async () => {
     setLoading(true)
@@ -1147,20 +1384,26 @@ function CategoryModal({ open, onClose }) {
     finally { setSaving(false) }
   }
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('¿Eliminar esta categoría? Esta acción no se puede deshacer.')) return
+  const handleDelete = (id) => {
+    setConfirmDeleteCat(id)
+  }
+
+  const doDelete = async () => {
     try {
-      await svc.deleteCategory(id)
+      await svc.deleteCategory(confirmDeleteCat)
       toast.success('Categoría eliminada')
+      setConfirmDeleteCat(null)
       load()
     } catch (e) {
       toast.error(e.response?.data?.detail || 'No se puede eliminar')
+      setConfirmDeleteCat(null)
     }
   }
 
   const rootCats = cats.filter(c => !c.parent)
 
   return (
+    <>
     <Modal open={open} onClose={onClose} title="Gestión de Categorías" size="md">
       <div className="space-y-5">
         {/* ── Crear nueva ── */}
@@ -1233,8 +1476,8 @@ function CategoryModal({ open, onClose }) {
                       <>
                         <button onClick={() => handleEdit(cat.id)}
                           disabled={saving}
-                          className="px-2 py-1 rounded-lg bg-teal-500 text-white text-[10px] font-bold disabled:opacity-60">
-                          ✓ Guardar
+                          className="px-2 py-1 rounded-lg bg-teal-500 text-white text-[10px] font-bold disabled:opacity-60 flex items-center gap-1">
+                          <Check size={11} /> Guardar
                         </button>
                         <button onClick={() => setEditId(null)}
                           className="p-1.5 rounded-lg hover:bg-cream-200 text-luma-faint">
@@ -1279,8 +1522,8 @@ function CategoryModal({ open, onClose }) {
                         <>
                           <button onClick={() => handleEdit(sub.id)}
                             disabled={saving}
-                            className="px-2 py-1 rounded-lg bg-teal-500 text-white text-[10px] font-bold disabled:opacity-60">
-                            ✓ Guardar
+                            className="px-2 py-1 rounded-lg bg-teal-500 text-white text-[10px] font-bold disabled:opacity-60 flex items-center gap-1">
+                            <Check size={11} /> Guardar
                           </button>
                           <button onClick={() => setEditId(null)}
                             className="p-1.5 rounded-lg hover:bg-cream-200 text-luma-faint">
@@ -1308,5 +1551,15 @@ function CategoryModal({ open, onClose }) {
         )}
       </div>
     </Modal>
+    <ConfirmDialog
+      open={!!confirmDeleteCat}
+      onCancel={() => setConfirmDeleteCat(null)}
+      onConfirm={doDelete}
+      title="¿Eliminar categoría?"
+      description="Esta categoría y sus subcategorías serán eliminadas permanentemente. Esta acción no se puede deshacer."
+      confirmLabel="Eliminar"
+      danger
+    />
+    </>
   )
 }

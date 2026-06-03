@@ -1,6 +1,9 @@
+import { AlertTriangle, Info, CheckCircle, X } from 'lucide-react'
+import { createPortal } from 'react-dom'
+
 // ─── Spinner ──────────────────────────────────────────────────────────────────
 export function Spinner({ size = 'md', color = 'teal' }) {
-  const sizes = { sm: 'w-4 h-4', md: 'w-6 h-6', lg: 'w-8 h-8', xl: 'w-12 h-12' }
+  const sizes  = { sm: 'w-4 h-4', md: 'w-6 h-6', lg: 'w-8 h-8', xl: 'w-12 h-12' }
   const colors = { teal: 'border-teal-500', white: 'border-white', gray: 'border-luma-muted' }
   return (
     <div className={`${sizes[size]} border-2 ${colors[color]} border-t-transparent rounded-full animate-spin`} />
@@ -59,14 +62,11 @@ export function EmptyState({ icon: Icon, title, description, action }) {
 
 // ─── Progress Bar ─────────────────────────────────────────────────────────────
 export function ProgressBar({ value, max, className = '' }) {
-  const pct = Math.min(100, Math.max(0, (value / max) * 100))
+  const pct   = Math.min(100, Math.max(0, (value / max) * 100))
   const level = pct === 0 ? 'out' : pct < 20 ? 'low' : ''
   return (
     <div className={`progress-bar ${className}`}>
-      <div
-        className={`progress-bar-fill ${level}`}
-        style={{ width: `${pct}%` }}
-      />
+      <div className={`progress-bar-fill ${level}`} style={{ width: `${pct}%` }} />
     </div>
   )
 }
@@ -81,39 +81,32 @@ export function Toast({ message, type = 'success', onClose }) {
   return (
     <div className="toast flex items-center gap-3">
       <span className={`text-sm font-medium ${colors[type]}`}>{message}</span>
-      <button onClick={onClose} className="text-luma-faint hover:text-luma-text">✕</button>
+      <button onClick={onClose} className="text-luma-faint hover:text-luma-text transition-colors ml-1">
+        <X size={14} />
+      </button>
     </div>
   )
 }
 
 // ─── Confirm Dialog ───────────────────────────────────────────────────────────
-/**
- * Diálogo de confirmación para acciones destructivas.
- * Uso: <ConfirmDialog open title="¿Eliminar?" description="..." onConfirm={fn} onCancel={fn} danger />
- */
 export function ConfirmDialog({
   open, title, description,
   onConfirm, onCancel,
   confirmLabel = 'Confirmar', cancelLabel = 'Cancelar',
-  danger = false,
-  loading = false,
+  danger   = false,
+  loading  = false,
 }) {
   if (!open) return null
-  return (
-    <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
-      {/* Overlay */}
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={onCancel} />
-      {/* Dialog */}
       <div className="relative bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-fade-up">
         <h3 className="text-[15px] font-bold text-luma-text mb-2">{title}</h3>
         {description && (
           <p className="text-[13px] text-luma-muted mb-5">{description}</p>
         )}
         <div className="flex gap-2 justify-end">
-          <button
-            onClick={onCancel}
-            className="btn-ghost px-5 py-2.5 text-sm"
-          >
+          <button onClick={onCancel} className="btn-ghost px-5 py-2.5 text-sm">
             {cancelLabel}
           </button>
           <button
@@ -127,22 +120,12 @@ export function ConfirmDialog({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
 // ─── Pagination ───────────────────────────────────────────────────────────────
-/**
- * Controles de paginación estándar para listas del panel admin.
- * No renderiza nada si todos los registros caben en una sola página.
- *
- * Props:
- *   page        – página actual (base 1)
- *   totalCount  – total de registros del servidor (campo `count` de la respuesta)
- *   pageSize    – registros por página (debe coincidir con lo enviado al backend)
- *   onPageChange(newPage) – callback que recibe el número de página a cargar
- *   className   – clases extra opcionales
- */
 export function Pagination({ page, totalCount, pageSize = 50, onPageChange, className = '' }) {
   if (!totalCount || totalCount <= pageSize) return null
   const totalPages = Math.ceil(totalCount / pageSize)
@@ -162,50 +145,36 @@ export function Pagination({ page, totalCount, pageSize = 50, onPageChange, clas
         de <span className="font-semibold text-luma-text">{totalCount.toLocaleString('es-CO')}</span>
       </span>
       <div className="flex items-center gap-1">
-        <button
-          onClick={() => onPageChange(1)}
-          disabled={page === 1}
-          className={btnCls(page === 1)}
-          title="Primera página"
-        >«</button>
-        <button
-          onClick={() => onPageChange(page - 1)}
-          disabled={page === 1}
-          className={btnCls(page === 1)}
-        >Anterior</button>
+        <button onClick={() => onPageChange(1)}          disabled={page === 1}          className={btnCls(page === 1)}          title="Primera página">«</button>
+        <button onClick={() => onPageChange(page - 1)}   disabled={page === 1}          className={btnCls(page === 1)}>Anterior</button>
         <span className="px-3 py-1.5 text-[12px] font-semibold text-luma-text whitespace-nowrap">
           {page} / {totalPages}
         </span>
-        <button
-          onClick={() => onPageChange(page + 1)}
-          disabled={page === totalPages}
-          className={btnCls(page === totalPages)}
-        >Siguiente</button>
-        <button
-          onClick={() => onPageChange(totalPages)}
-          disabled={page === totalPages}
-          className={btnCls(page === totalPages)}
-          title="Última página"
-        >»</button>
+        <button onClick={() => onPageChange(page + 1)}   disabled={page === totalPages} className={btnCls(page === totalPages)}>Siguiente</button>
+        <button onClick={() => onPageChange(totalPages)} disabled={page === totalPages} className={btnCls(page === totalPages)} title="Última página">»</button>
       </div>
     </div>
   )
 }
 
-// ─── Alert Banner (inline error/warning) ─────────────────────────────────────
+// ─── Alert Banner (inline error/warning/info/success) ─────────────────────────
 export function AlertBanner({ type = 'error', children, className = '' }) {
   const styles = {
-    error:   'bg-red-50 border-red-200 text-red-700',
+    error:   'bg-red-50   border-red-200   text-red-700',
     warning: 'bg-amber-50 border-amber-200 text-amber-700',
-    info:    'bg-blue-50 border-blue-200 text-blue-700',
-    success: 'bg-teal-50 border-teal-200 text-teal-700',
+    info:    'bg-blue-50  border-blue-200  text-blue-700',
+    success: 'bg-teal-50  border-teal-200  text-teal-700',
   }
-  const icons = { error: '⚠️', warning: '⚠️', info: 'ℹ️', success: '✓' }
+  const icons = {
+    error:   <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />,
+    warning: <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />,
+    info:    <Info          size={14} className="flex-shrink-0 mt-0.5" />,
+    success: <CheckCircle  size={14} className="flex-shrink-0 mt-0.5" />,
+  }
   return (
     <div className={`border rounded-xl px-4 py-3 text-[12px] font-medium flex items-start gap-2 ${styles[type]} ${className}`}>
-      <span className="flex-shrink-0 mt-0.5">{icons[type]}</span>
+      {icons[type]}
       <span>{children}</span>
     </div>
   )
 }
-
